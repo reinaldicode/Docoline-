@@ -1,0 +1,57 @@
+{
+    "section": {
+        "label": "Section",
+        "options": [
+            "Accounting",
+            "BMG",
+            "DCU",
+            "Engineering",
+            "Exim Control",
+            "FCS Group",
+            "GA and Personnel",
+            "Job Innovation",
+            "Maintenance",
+            "MIS",
+            "President Director",
+            "Product Innovation",
+            "Product Warehouse Control",
+            "Production",
+            "Production Sales Control",
+            "Purchasing",
+            "Purchasing and MC",
+            "QA Section",
+            "QC",
+            "R & D",
+            "SHE"
+        ]
+    },
+    "status": {
+        "label": "Status",
+        "options": [
+            "Secured",
+            "Review",
+            "Pending",
+            "Obsolete"
+        ]
+    },
+    "category": {
+        "label": "Category",
+        "options": [
+            "Internal",
+            "External"
+        ]
+    },
+    "process": {
+        "label": "Process",
+        "options": [
+            "All Process",
+            "Die Bonding",
+            "Wire Bonding",
+            "Transfer Molding",
+            "Electrical Testing",
+            "Visual Inspection",
+            "Packing",
+            "General"
+        ]
+    }
+}
