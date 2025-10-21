@@ -168,46 +168,5 @@
             "status": false,
             "category": true
         }
-    },
-    {
-        "id": "sato",
-        "name": "SATO",
-        "has_submenu": true,
-        "submenu": [
-            {
-                "id": "sato_prod",
-                "name": "SATO prod",
-                "filter_config": {
-                    "section_dept": false,
-                    "section_prod": true,
-                    "status": false,
-                    "category": false,
-                    "device": true,
-                    "process": true
-                }
-            },
-            {
-                "id": "sato_other",
-                "name": "SATO other",
-                "filter_config": {
-                    "section_dept": true,
-                    "section_prod": false,
-                    "status": true,
-                    "category": true,
-                    "device": false,
-                    "process": false
-                }
-            }
-        ],
-        "filter_config": {
-            "section_dept": false,
-            "section_prod": true,
-            "status": true,
-            "category": true,
-            "device": true,
-            "process": true
-        },
-        "use_custom_file": false,
-        "custom_file": ""
     }
 ]

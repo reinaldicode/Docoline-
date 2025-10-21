@@ -69,7 +69,7 @@ function loadDocumentTypes() {
  * FUNGSI UNTUK MENGHITUNG NOTIFIKASI PER TIPE DOKUMEN
  * ============================================================================
  */
-function getNotificationCounts($link, $nrp, $state, $docTypes) {
+function getNotificationCounts($link, $nrp, $state, $docTypes, $selectedStatus = null) {
     $counts = ['total' => 0];
     
     // Initialize counts for all document types
@@ -81,8 +81,17 @@ function getNotificationCounts($link, $nrp, $state, $docTypes) {
         $type_escaped = mysqli_real_escape_string($link, $type);
         
         if($state == 'Admin') {
-            $sql = "SELECT COUNT(*) as count FROM docu WHERE doc_type='$type_escaped' AND 
-                    status IN ('Review', 'Pending')";
+            // PERBAIKAN: Sesuaikan dengan filter status yang dipilih
+            if($selectedStatus && $selectedStatus != '-') {
+                $status_escaped = mysqli_real_escape_string($link, $selectedStatus);
+                $sql = "SELECT COUNT(*) as count FROM docu 
+                        WHERE doc_type='$type_escaped' AND status='$status_escaped'";
+            } else {
+                // Default: hitung Review + Pending
+                $sql = "SELECT COUNT(*) as count FROM docu 
+                        WHERE doc_type='$type_escaped' AND 
+                        status IN ('Review', 'Pending')";
+            }
         } elseif($state == 'Originator') {
             $sql = "SELECT COUNT(*) as count FROM docu WHERE doc_type='$type_escaped' AND 
                     user_id='$nrp' AND status IN ('Review', 'Pending')";
@@ -148,8 +157,13 @@ function getRecentNotifications($link, $nrp, $state, $limit = 10) {
 // Load dynamic document types
 $docTypes = loadDocumentTypes();
 
-// Ambil data notifikasi
-$notifCounts = getNotificationCounts($link, $nrp, $state, $docTypes);
+// Initialize status variable with default value
+if (!isset($status)) {
+    $status = 'Review'; // Default value for Admin
+}
+
+// PERBAIKAN: Ambil data notifikasi dengan mempertimbangkan status yang dipilih
+$notifCounts = getNotificationCounts($link, $nrp, $state, $docTypes, $status);
 $recentNotifications = getRecentNotifications($link, $nrp, $state);
 
 ?>
@@ -298,6 +312,19 @@ $recentNotifications = getRecentNotifications($link, $nrp, $state);
     font-size: 12px;
     display: none;
 }
+
+.info-box {
+    background: #d1ecf1;
+    border: 1px solid #bee5eb;
+    border-radius: 4px;
+    padding: 10px 15px;
+    margin-bottom: 15px;
+    color: #0c5460;
+}
+
+.info-box .glyphicon {
+    margin-right: 5px;
+}
 </style>
 
 <div id="profile">
@@ -320,12 +347,23 @@ $recentNotifications = getRecentNotifications($link, $nrp, $state);
 <?php if($notifCounts['total'] > 0): ?>
 <div class="notification-summary">
     <h5><span class="glyphicon glyphicon-dashboard"></span> Notification Summary - Click to Filter</h5>
+    
+    <!-- Info tentang filter yang aktif -->
+    <?php if($state == 'Admin'): ?>
+    <div style="background: rgba(255,255,255,0.15); padding: 8px; border-radius: 4px; margin-bottom: 10px; font-size: 12px;">
+        <span class="glyphicon glyphicon-info-sign"></span> 
+        <strong>Current Filter:</strong> Status = <?php echo htmlspecialchars($status); ?>
+        <?php if($status == 'Review' || $status == '-'): ?>
+        <br><small>💡 To see all pending documents, select "Pending" status</small>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
 
     <?php foreach($docTypes as $type): ?>
         <?php if($notifCounts[$type] > 0): ?>
-        <a href="?tipe=<?php echo urlencode($type); ?>&submit=Show<?php echo ($state == 'Admin' && isset($status)) ? '&status='.$status : ''; ?>" 
+        <a href="?tipe=<?php echo urlencode($type); ?>&submit=Show<?php echo ($state == 'Admin') ? '&status='.$status : ''; ?>" 
            class="summary-link" 
-           title="Show <?php echo htmlspecialchars($type); ?> Documents">
+           title="Show <?php echo htmlspecialchars($type); ?> Documents with status: <?php echo htmlspecialchars($status); ?>">
           <div class="summary-item">
               <span><span class="glyphicon glyphicon-file"></span> <?php echo htmlspecialchars($type); ?></span>
               <span class="badge" style="background: white; color: #333;"><?php echo $notifCounts[$type]; ?></span>
@@ -353,7 +391,7 @@ $recentNotifications = getRecentNotifications($link, $nrp, $state);
         <?php foreach($recentNotifications as $notif): ?>
         <div class="notification-item <?php echo ($notif['days_passed'] >= 3) ? 'overdue' : (($notif['days_passed'] >= 1) ? 'urgent' : ''); ?>" 
              onclick="window.location.href='detail.php?drf=<?php echo $notif['no_drf']; ?>&no_doc=<?php echo urlencode($notif['no_doc']); ?>'">
-            <div style="display: flex; justify-content: space-between;">
+            <div style="display: flex; justify-space-between;">
                 <strong><?php echo htmlspecialchars($notif['doc_type']); ?> - <?php echo htmlspecialchars($notif['status']); ?></strong>
                 <small class="text-muted"><?php echo $notif['days_passed']; ?> days ago</small>
             </div>
@@ -426,7 +464,7 @@ $(document).ready(function () {
                 <option value="-">--- Select Type ---</option>
                 <?php foreach($docTypes as $type): ?>
                 <option value="<?php echo htmlspecialchars($type); ?>" <?php echo (isset($tipe) && $tipe == $type) ? 'selected' : ''; ?>>
-                    <?php echo htmlspecialchars($type); ?> <?php echo ($notifCounts[$type] > 0) ? '(' . $notifCounts[$type] . ' new)' : ''; ?>
+                    <?php echo htmlspecialchars($type); ?> <?php echo ($notifCounts[$type] > 0) ? '(' . $notifCounts[$type] . ' documents)' : ''; ?>
                 </option>
                 <?php endforeach; ?>
             </select>
@@ -434,8 +472,8 @@ $(document).ready(function () {
         
         <?php if ($state=='Admin'){ ?>
         <select name="status" class="form-control">
-            <option value="-">--- Select Status ---</option>
-            <option <?php echo (isset($status) && $status == 'Review') ? 'selected' : 'selected'; ?> value="Review">Review</option>
+            <option value="-">--- All Status ---</option>
+            <option <?php echo (isset($status) && $status == 'Review') ? 'selected' : ((!isset($status) || $status == '') ? 'selected' : ''); ?> value="Review">Review</option>
             <option <?php echo (isset($status) && $status == 'Pending') ? 'selected' : ''; ?> value="Pending">Pending</option>
             <option <?php echo (isset($status) && $status == 'Approved') ? 'selected' : ''; ?> value="Approved">Approved</option>
         </select>           
@@ -457,7 +495,14 @@ $(document).ready(function () {
 
 if(isset($_GET['submit']))
 {
- $tipe=$_GET['tipe'];
+ $tipe = isset($_GET['tipe']) ? $_GET['tipe'] : '-';
+ 
+ // Set status from GET or use default
+ if(isset($_GET['status'])) {
+     $status = $_GET['status'];
+ } elseif(!isset($status)) {
+     $status = 'Review'; // Default value
+ }
 
 if($tipe=="-"){
     $sort="";
@@ -466,8 +511,18 @@ if($tipe=="-"){
     $sort="and doc_type='$tipe_escaped'";
 }
 
+// PERBAIKAN: Update notifikasi sesuai dengan filter yang aktif
+$notifCounts = getNotificationCounts($link, $nrp, $state, $docTypes, $status);
+
 if($state=='Admin') {
-    $sql="select * from docu where status='$status' $sort order by no_drf";
+    // PERBAIKAN: Tambahkan kondisi untuk menangani "All Status"
+    if($status == '-') {
+        // Tampilkan semua dokumen Review + Pending
+        $sql="select * from docu where status IN ('Review', 'Pending') $sort order by no_drf";
+    } else {
+        // Tampilkan sesuai status yang dipilih
+        $sql="select * from docu where status='$status' $sort order by no_drf";
+    }
 }
 elseif($state=='Originator') {
     $sql="select * from docu where (docu.status='Review' or docu.status='Pending') $sort and user_id='$nrp' order by no_drf";
@@ -484,7 +539,22 @@ elseif($state=='Approver') {
 }
 
 $res=mysqli_query($link, $sql);
+$total_rows = mysqli_num_rows($res);
 ?>
+
+<!-- Info Box: Menampilkan jumlah hasil -->
+<?php if($total_rows > 0): ?>
+<div class="info-box">
+    <span class="glyphicon glyphicon-info-sign"></span>
+    <strong>Showing <?php echo $total_rows; ?> document(s)</strong>
+    <?php if(isset($tipe) && $tipe != '-'): ?>
+        for type: <strong><?php echo htmlspecialchars($tipe); ?></strong>
+    <?php endif; ?>
+    <?php if($state == 'Admin'): ?>
+        with status: <strong><?php echo ($status == '-') ? 'Review + Pending' : htmlspecialchars($status); ?></strong>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
 
 <table class="table table-hover">
 <thead bgcolor="#00FFFF">
@@ -506,6 +576,12 @@ $res=mysqli_query($link, $sql);
 </thead>
 <tbody>
 <?php
+if($total_rows == 0) {
+    echo '<tr><td colspan="13" style="text-align:center; padding: 20px;">
+          <span class="glyphicon glyphicon-inbox" style="font-size: 48px; color: #ccc;"></span>
+          <br><br>No documents found matching your criteria.
+          </td></tr>';
+} else {
 $j=1;
 while($info = mysqli_fetch_array($res)) 
 { ?>
@@ -628,7 +704,9 @@ while($info = mysqli_fetch_array($res))
 </tr>
 
 <?php 
-$j++;} 
+$j++;
+} 
+}
 ?> 
 </tbody>
 </table>
