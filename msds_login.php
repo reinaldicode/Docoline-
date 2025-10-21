@@ -2,14 +2,15 @@
 include 'header.php';
 include 'koneksi.php';
 
-// Ambil variabel dari session dengan aman
+// 🆕 LOAD SMART WRAPPER
+require_once('legacy_wrapper.php');
+$wrapper = new LegacyFilterWrapper('MSDS', $link);
+
+// Ambil session state
 $state = $_SESSION['state'] ?? '';
 $nrp   = $_SESSION['nrp'] ?? '';
-
-// Atur error reporting untuk menampilkan semua masalah saat pengembangan
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
 ?>
+
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -22,6 +23,8 @@ ini_set('display_errors', 1);
 .modal .form-control { margin-bottom:10px; }
 </style>
 
+<?php if ($wrapper->needsCascadeScript()): ?>
+<!-- CASCADE DROPDOWN SCRIPT -->
 <script type="text/javascript">
 $(document).ready(function() {
     $('#wait_1').hide();
@@ -104,110 +107,105 @@ function finishAjax2(id, response) {
     $('#' + id).html(response).fadeIn();
 }
 </script>
+<?php else: ?>
+<!-- STANDARD SCRIPT -->
+<script type="text/javascript">
+$(document).ready(function () {
+    $(document).on('click', '.sec-file', function(e) {
+        e.preventDefault();
+        var drf     = $(this).data('id') || '';
+        var lama    = $(this).data('lama') || '';
+        var type    = $(this).data('type') || '';
+        var rev     = $(this).data('rev') || '';
+        var status  = $(this).data('status') || '';
+        var tipe    = $(this).data('tipe') || '';
+
+        $('#myModal2 #drf').val(drf);
+        $('#myModal2 #lama').val(lama);
+        $('#myModal2 #type').val(type);
+        $('#myModal2 #rev').val(rev);
+        $('#myModal2 #status').val(status);
+        $('#myModal2 #tipe').val(tipe);
+
+        $('#myModal2').modal('show');
+    });
+
+    $(document).on('click', '.btn-upload-sos', function(e){
+        e.preventDefault();
+        var drf = $(this).data('drf') || '';
+        var nodoc = $(this).data('nodoc') || '';
+        
+        $('#modal_upload_drf').val(drf);
+        $('#modal_upload_nodoc').text(nodoc);
+        $('#modalSosialisasi').modal('show');
+    });
+
+    $('#modalSosialisasi').on('hidden.bs.modal', function () {
+        $(this).find('form')[0].reset();
+    });
+    
+    $('#myModal2').on('hidden.bs.modal', function () {
+        $(this).find('form')[0].reset();
+    });
+});
+</script>
+<?php endif; ?>
+
 </head>
 <body>
 <br />
 <br />
-<div class="row">
-    <div class="col-xs-4 well well-lg">
-        <h2>Select Device & Process For MSDS Document</h2>
-        <form action="" method="GET">
-            <table>
-                <tr>
-                    <td>Section</td>
-                    <td>:</td>
-                    <td>
-                        <?php include('func.php'); ?>
-                        <select name="section" id="section" class="form-control">
-                            <option value="" selected="selected">Select Section</option>
-                            <?php getTierOne(); ?>
-                        </select>
-                    </td>
-                </tr>
-                <tr>
-                    <td>Device</td>
-                    <td>:</td>
-                    <td>
-                        <span id="wait_1" style="display: none;"><img alt="Please Wait" src="images/wait.gif"/></span>
-                        <span id="result_1" style="display: none;"></span>
-                    </td>
-                </tr>
-                <tr>
-                    <td>Process</td>
-                    <td>:</td>
-                    <td>
-                        <span id="wait_2" style="display: none;"><img alt="Please Wait" src="images/wait.gif"/></span>
-                        <span id="result_2" style="display: none;"></span>
-                    </td>
-                </tr>
-                <tr>
-                    <td>Status</td>
-                    <td>:</td>
-                    <td>
-                        <select name="status" class="form-control">
-                            <option value=""> --- Select Status --- </option>
-                            <option value="Secured" selected> Approved </option>
-                            <option value="Review"> Review </option>
-                            <option value="Pending"> Pending </option>
-                            <option value="Obsolate"> Obsolate </option>
-                        </select>
-                    </td>
-                </tr>
-                <tr>
-                    <td>Category</td>
-                    <td>:</td>
-                    <td>
-                        <select name="cat" class="form-control">
-                            <option value=""> --- Select Category --- </option>
-                            <option value="Internal" selected> Internal </option>
-                            <option value="External"> External </option>
-                        </select>
-                    </td>
-                </tr>
-                <tr>
-                    <td></td>
-                    <td></td>
-                    <td>
-                        <input type='hidden' name='by' value='no_drf'>
-                        <input type="submit" value="Show" name="submit" class="btn btn-info">
-                    </td>
-                </tr>
-            </table>
-        </form>
-    </div>
-</div>
+
+<h3>MSDS Documents</h3>
+
+<?php
+// 🆕 RENDER FILTER FORM MENGGUNAKAN WRAPPER
+$wrapper->renderFilterForm();
+?>
 
 <?php
 if (isset($_GET['submit'])) {
-    $dev = isset($_GET['device']) ? mysqli_real_escape_string($link, $_GET['device']) : '';
-    $proc = isset($_GET['proc']) ? mysqli_real_escape_string($link, $_GET['proc']) : '';
-    $status = isset($_GET['status']) ? mysqli_real_escape_string($link, $_GET['status']) : '';
-    $cat = isset($_GET['cat']) ? mysqli_real_escape_string($link, $_GET['cat']) : '';
-
-    $orderByOptions = ['no_drf', 'No_doc', 'title'];
-    $by = isset($_GET['by']) && in_array($_GET['by'], $orderByOptions) ? $_GET['by'] : 'no_drf';
-
-    if (!empty($dev)) {
-        $sql = "SELECT * FROM docu WHERE device='$dev' AND doc_type='MSDS' AND status='$status' AND category='$cat' ORDER BY `$by`";
-    } else {
-        $sql = "SELECT * FROM docu WHERE doc_type='MSDS' AND status='$status' AND category='$cat' ORDER BY `$by`";
-    }
+    // 🆕 BUILD QUERY MENGGUNAKAN WRAPPER
+    $sql = $wrapper->buildQuery();
     
-    $res = mysqli_query($link, $sql);
-    if (!$res) {
+    $result = mysqli_query($link, $sql);
+    
+    if (!$result) {
         die("Query Gagal: " . mysqli_error($link));
     }
+    
+    $rowCount = mysqli_num_rows($result);
+    
+    $dev = $_GET['device'] ?? '';
+    $proc = $_GET['proc'] ?? '';
+    $status = $_GET['status'] ?? '';
+    $cat = $_GET['cat'] ?? '';
 ?>
+
+<br /><br />
+<h1>MSDS's List For Device: <strong><?php echo htmlspecialchars($dev);?></strong>
+    <?php if (!empty($proc) && $proc != '-'): ?>
+        , Process: <strong><?php echo htmlspecialchars($proc); ?></strong>
+    <?php endif; ?>
+    , Category: <strong><?php echo htmlspecialchars($cat); ?></strong>
+</h1>
+
+<?php if ($rowCount == 0): ?>
+    <div class='alert alert-warning' style='margin:20px;'>
+        <h4><span class='glyphicon glyphicon-search'></span> Tidak ada dokumen yang ditemukan</h4>
+        <p>Tidak ada dokumen MSDS dengan filter yang Anda pilih.</p>
+    </div>
+<?php else: ?>
+
 <table class="table table-hover">
-    <h1>MSDS's List For Device: <strong><?php echo htmlspecialchars($dev);?></strong>, Process: <strong><?php echo htmlspecialchars($proc); ?></strong>, Category: <strong><?php echo htmlspecialchars($cat); ?></strong></h1>
     <thead style="background:#00FFFF;">
         <tr>
             <th>No</th>
             <th>Date</th>
-            <th><a href='msds_login.php?device=<?php echo urlencode($dev); ?>&by=No_doc&status=<?php echo urlencode($status); ?>&proc=<?php echo urlencode($proc);?>&cat=<?php echo urlencode($cat); ?>&submit=Show'>No. Document</a></th>
+            <th>No. Document</th>
             <th>No Rev.</th>
-            <th><a href='msds_login.php?device=<?php echo urlencode($dev); ?>&by=no_drf&status=<?php echo urlencode($status); ?>&proc=<?php echo urlencode($proc);?>&cat=<?php echo urlencode($cat); ?>&submit=Show'>DRF</a></th>
-            <th><a href='msds_login.php?device=<?php echo urlencode($dev); ?>&by=title&status=<?php echo urlencode($status); ?>&proc=<?php echo urlencode($proc);?>&cat=<?php echo urlencode($cat); ?>&submit=Show'>Title</a></th>
+            <th>DRF</th>
+            <th>Title</th>
             <th>Process</th>
             <th>Section</th>
             <th>Action</th>
@@ -217,8 +215,9 @@ if (isset($_GET['submit'])) {
     <tbody>
     <?php
     $i = 1;
-    while ($info = mysqli_fetch_assoc($res)) {
+    while ($info = mysqli_fetch_assoc($result)) {
         $has_sos = !empty($info['sos_file']);
+        $tempat = ($info['no_drf'] > 12967) ? $info['doc_type'] : 'document';
     ?>
         <tr>
             <td><?php echo $i; ?></td>
@@ -227,8 +226,7 @@ if (isset($_GET['submit'])) {
             <td><?php echo htmlspecialchars($info['no_rev']);?></td>
             <td><?php echo htmlspecialchars($info['no_drf']);?></td>
             <td>
-                <?php $tempat = ($info['no_drf'] > 12967) ? $info['doc_type'] : 'document'; ?>
-                <a href="<?php echo htmlspecialchars($tempat); ?>/<?php echo htmlspecialchars($info['file']); ?>">
+                <a href="<?php echo htmlspecialchars($tempat . '/' . $info['file']); ?>" target="_blank">
                     <?php echo htmlspecialchars($info['title']);?>
                 </a>
             </td>
@@ -256,7 +254,6 @@ if (isset($_GET['submit'])) {
                 <?php } ?>
             </td>
             
-            <!-- Kolom Sosialisasi -->
             <td>
                 <?php if ($has_sos) { ?>
                     <a href="lihat_sosialisasi.php?drf=<?php echo urlencode($info['no_drf']); ?>" 
@@ -280,7 +277,15 @@ if (isset($_GET['submit'])) {
     ?>
     </tbody>
 </table>
+
 <?php
+    endif;
+    mysqli_free_result($result);
+} else {
+    echo "<div class='alert alert-info' style='margin-top:20px;'>";
+    echo "<h4><span class='glyphicon glyphicon-info-sign'></span> Cara Menggunakan</h4>";
+    echo "<p>Pilih <strong>Section</strong>, <strong>Device</strong>, <strong>Process</strong> (opsional), <strong>Status</strong>, dan <strong>Category</strong>, lalu klik <strong>Show</strong>.</p>";
+    echo "</div>";
 }
 ?>
 

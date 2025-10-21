@@ -13,6 +13,3 @@ include 'koneksi.php';
 <br />
 
 <h2>Form List</h2>
-<a href="form_prod.php" class="btn btn-primary" style="margin-left:50px;">Production</a>
-<a href="form_other.php" class="btn btn-primary" >Others</a>
-			

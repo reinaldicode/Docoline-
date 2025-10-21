@@ -63,16 +63,6 @@ function displayFilterConfig($config) {
     <strong>Success!</strong> <?php echo htmlspecialchars($successMsg); ?>
 </div>
 
-<div class="btn-group pull-right" style="margin-bottom: 15px;">
-    <a href="manage_filters.php" class="btn btn-info">
-        <span class="glyphicon glyphicon-cog"></span> Manage Filter Options
-    </a>
-    <a href="add_document.php" class="btn btn-success">
-        <span class="glyphicon glyphicon-plus"></span> Add Document Type
-    </a>
-</div>
-<div class="clearfix"></div>
-
 <?php endif; ?>
 
 <h2><span class="glyphicon glyphicon-cog"></span> Manage Document Types</h2>

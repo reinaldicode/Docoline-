@@ -1,18 +1,22 @@
 <?php
-// config.php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// Pastikan parameter koneksi benar
+$host = 'localhost';
+$username = 'root';  // atau username lain
+$password = '';      // password database Anda
+$database = 'doc';   // nama database
 
-$hostname_config = "localhost"; 
-$database_config = "doc";
-$username_config = "admin";
-$password_config = "asdf123!";    
-
-$config = mysqli_connect($hostname_config, $username_config, $password_config, $database_config);
-
-if (!$config) {
-    die("Koneksi gagal: " . mysqli_connect_error());
+try {
+    $conn = new mysqli($host, $username, $password, $database);
+    
+    // Cek koneksi
+    if ($conn->connect_error) {
+        die("Koneksi gagal: " . $conn->connect_error);
+    }
+    
+    // Set charset
+    $conn->set_charset("utf8mb4");
+    
+} catch (Exception $e) {
+    die("Error: " . $e->getMessage());
 }
-
-mysqli_set_charset($config, "utf8mb4");
 ?>

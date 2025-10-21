@@ -1,6 +1,7 @@
 {
-    "section": {
-        "label": "Section",
+    "section_dept": {
+        "label": "Section (Department)",
+        "description": "Filter by department/administrative section",
         "options": [
             "Accounting",
             "BMG",
@@ -25,24 +26,58 @@
             "SHE"
         ]
     },
+    "section_prod": {
+        "label": "Section (Production)",
+        "description": "Filter by production section/line",
+        "options": [
+            "Line 1",
+            "Line 2",
+            "Line 3",
+            "Line 4",
+            "Line 5",
+            "QC Line",
+            "Packing Line",
+            "General Production"
+        ]
+    },
     "status": {
         "label": "Status",
+        "description": "Document approval status",
         "options": [
             "Secured",
             "Review",
             "Pending",
-            "Obsolete"
+            "Approved"
         ]
     },
     "category": {
         "label": "Category",
+        "description": "Internal or External document",
         "options": [
             "Internal",
             "External"
         ]
     },
+    "device": {
+        "label": "Device",
+        "description": "Production device/equipment",
+        "options": [
+            "ASM AD830",
+            "ASM AD838",
+            "ASM AD839",
+            "KAIJO FB830",
+            "KAIJO FB840",
+            "TOWA YPS",
+            "TOWA YPL",
+            "Advantest T5503",
+            "Advantest T5505",
+            "General Equipment",
+            "-"
+        ]
+    },
     "process": {
         "label": "Process",
+        "description": "Manufacturing process stage",
         "options": [
             "All Process",
             "Die Bonding",
@@ -53,5 +88,15 @@
             "Packing",
             "General"
         ]
+    },
+    "type": {
+        "label": "Type",
+        "description": "Document type",
+        "options": [],
+        "dynamic": true,
+        "options_by_doctype": {
+            "Obsolate": ["WI", "Procedure", "Form"],
+            "MS & ROHS": ["Material Spec", "ROHS"]
+        }
     }
 }

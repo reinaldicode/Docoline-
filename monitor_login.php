@@ -2,17 +2,19 @@
 include 'header.php';
 include 'koneksi.php';
 
-// Ambil variabel dari session dengan aman
+// 🆕 LOAD SMART WRAPPER
+require_once('legacy_wrapper.php');
+$wrapper = new LegacyFilterWrapper('Sample', $link);
+
+// Ambil session state
 $state = $_SESSION['state'] ?? '';
 $nrp   = $_SESSION['nrp'] ?? '';
 ?>
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 
-<head profile="http://www.google.com">
-	<html>
 <br />
 <br />
 
+<!-- jQuery -->
 <script type="text/javascript" src="bootstrap/js/jquery.min.js"></script>
 
 <style>
@@ -20,53 +22,25 @@ $nrp   = $_SESSION['nrp'] ?? '';
 .modal .form-control { margin-bottom:10px; }
 </style>
 
+<?php if ($wrapper->needsCascadeScript()): ?>
+<!-- CASCADE DROPDOWN SCRIPT -->
 <script type="text/javascript">
 $(document).ready(function() {
-	$('#wait_1').hide();
-	$('#section').change(function(){
-	  $('#wait_1').show();
-	  $('#result_1').hide();
-	  $.get("func.php", {
-		func: "section",
-		drop_var: $('#section').val()
-	  }, function(response){
-		$('#result_1').fadeOut();
-		setTimeout("finishAjax1('result_1', '"+escape(response)+"')", 400);
-	  });
-		return false;
-	});
-});
-
-function finishAjax1(id, response) {
-  $('#wait_1').hide();
-  $('#'+id).html(unescape(response));
-  $('#'+id).fadeIn();
-
-  $('#wait_2').hide();
-	$('#device').change(function(){
-	  $('#wait_2').show();
-	  $('#result_2').hide();
-	  $.get("func3.php", {
-		func: "device",
-		drop_var2: $('#device').val()
-	  }, function(response){
-		$('#result_2').fadeOut();
-		setTimeout("finishAjax('result_2', '"+escape(response)+"')", 400);
-	  });
-		return false;
-	});
-}
-
-function finishAjax(id, response) {
-  $('#wait_2').hide();
-  $('#'+id).html(unescape(response));
-  $('#'+id).fadeIn();
-}
-</script>
-
-<script type="text/javascript">
-$(document).ready(function () {
-    // Modal Secure Document data binding
+    $('#wait_1').hide();
+    $('#section').change(function(){
+        $('#wait_1').show();
+        $('#result_1').hide();
+        $.get("func.php", {
+            func: "section",
+            drop_var: $('#section').val()
+        }, function(response){
+            $('#result_1').fadeOut();
+            setTimeout(function(){ finishAjax1('result_1', escape(response)); }, 400);
+        });
+        return false;
+    });
+    
+    // Modal handlers
     $(document).on('click', '.sec-file', function(e) {
         e.preventDefault();
         var drf     = $(this).data('id') || '';
@@ -86,7 +60,6 @@ $(document).ready(function () {
         $('#myModal2').modal('show');
     });
 
-    // Modal Upload Sosialisasi data binding
     $(document).on('click', '.btn-upload-sos', function(e){
         e.preventDefault();
         var drf = $(this).data('drf') || '';
@@ -97,7 +70,74 @@ $(document).ready(function () {
         $('#modalSosialisasi').modal('show');
     });
 
-    // reset form saat modal ditutup
+    $('#modalSosialisasi').on('hidden.bs.modal', function () {
+        $(this).find('form')[0].reset();
+    });
+    
+    $('#myModal2').on('hidden.bs.modal', function () {
+        $(this).find('form')[0].reset();
+    });
+});
+
+function finishAjax1(id, response) {
+    $('#wait_1').hide();
+    $('#'+id).html(unescape(response));
+    $('#'+id).fadeIn();
+
+    $('#wait_2').hide();
+    $('#device').change(function(){
+        $('#wait_2').show();
+        $('#result_2').hide();
+        $.get("func3.php", {
+            func: "device",
+            drop_var2: $('#device').val()
+        }, function(response){
+            $('#result_2').fadeOut();
+            setTimeout(function(){ finishAjax('result_2', escape(response)); }, 400);
+        });
+        return false;
+    });
+}
+
+function finishAjax(id, response) {
+    $('#wait_2').hide();
+    $('#'+id).html(unescape(response));
+    $('#'+id).fadeIn();
+}
+</script>
+<?php else: ?>
+<!-- STANDARD SCRIPT -->
+<script type="text/javascript">
+$(document).ready(function () {
+    $(document).on('click', '.sec-file', function(e) {
+        e.preventDefault();
+        var drf     = $(this).data('id') || '';
+        var lama    = $(this).data('lama') || '';
+        var type    = $(this).data('type') || '';
+        var rev     = $(this).data('rev') || '';
+        var status  = $(this).data('status') || '';
+        var tipe    = $(this).data('tipe') || '';
+
+        $('#myModal2 #drf').val(drf);
+        $('#myModal2 #lama').val(lama);
+        $('#myModal2 #type').val(type);
+        $('#myModal2 #rev').val(rev);
+        $('#myModal2 #status').val(status);
+        $('#myModal2 #tipe').val(tipe);
+
+        $('#myModal2').modal('show');
+    });
+
+    $(document).on('click', '.btn-upload-sos', function(e){
+        e.preventDefault();
+        var drf = $(this).data('drf') || '';
+        var nodoc = $(this).data('nodoc') || '';
+        
+        $('#modal_upload_drf').val(drf);
+        $('#modal_upload_nodoc').text(nodoc);
+        $('#modalSosialisasi').modal('show');
+    });
+
     $('#modalSosialisasi').on('hidden.bs.modal', function () {
         $(this).find('form')[0].reset();
     });
@@ -107,183 +147,124 @@ $(document).ready(function () {
     });
 });
 </script>
+<?php endif; ?>
 
-<div class="row">
-	<div class="col-xs-4 well well-lg">
-	 <h2>Select Device & Process For Monitoring Sample</h2>
+<h3>Monitor Sample Documents</h3>
 
-			<form action="" method="GET">
-			 <table>
-			 	<tr>
-			 		<td>Section</td>
-			 		<td>:</td>
-			 		<td>
-						<?php include('func.php'); ?>
-			 			<select name="section" id="section" class="form-control">
-			 				<option value="" selected="selected">Select Section</option>
-			 				<?php getTierOne(); ?>
-			 			</select> 
-			 		</td>
-			 	</tr>
-
-			 	<tr>
-			 		<td>Device</td>
-			 		<td>:</td>
-			 		<td>
-			 			<span id="wait_1" style="display: none;">
-						<img alt="Please Wait" src="images/wait.gif"/>
-						</span>
-						<span id="result_1" style="display: none;"></span> 
-			 		</td>
-			 	</tr>
-
-			 	<tr>
-			 		<td>Process</td>
-			 		<td>:</td>
-			 		<td>
-			 			<span id="wait_2" style="display: none;">
-						<img alt="Please Wait" src="images/wait.gif"/>
-						</span>
-						<span id="result_2" style="display: none;"></span>
-			 		</td>
-			 	</tr>
-
-			 	<tr>
-			 		<td>Status</td>
-			 		<td>:</td>
-			 		<td>
-			 			<select name="status" class="form-control">
-						<option value="0"> --- Select Status --- </option>
-						<option value="Secured" selected> Approved </option>
-						<option value="Review"> Review </option>
-						<option value="Pending"> Pending </option>
-						<option value="Obsolate"> Obsolate </option>
-					</select>			
-			 		</td>
-			 	</tr>
-
-			 	<tr>
-			 		<td>Category</td>
-			 		<td>:</td>
-			 		<td>
-			 			<select name="cat" class="form-control">
-						<option value="0"> --- Select Category --- </option>
-						<option value="Internal" selected> Internal </option>
-						<option value="Eksternal"> Eksternal </option>
-					</select>			
-			 		</td>
-			 	</tr>
-			 	
-			 	<tr>
-			 		<td></td>
-			 		<td></td>
-			 		<td>
-			 			<input type='hidden' name='by' value='no_drf'>
-			 			<input type="submit" value="Show" name="submit" class="btn btn-info">
-			 		</td>
-			 	</tr>
-			 </table>
-			</form>
-	 </div>
- </div>
-
- <?php
-if (isset($_GET['submit'])){
-
-	$dev    = isset($_GET['device']) ? mysqli_real_escape_string($link, $_GET['device']) : '';
-	$proc   = isset($_GET['proc']) ? mysqli_real_escape_string($link, $_GET['proc']) : '';
-	$status = isset($_GET['status']) ? mysqli_real_escape_string($link, $_GET['status']) : '';
-	$cat    = isset($_GET['cat']) ? mysqli_real_escape_string($link, $_GET['cat']) : '';
-	$by     = isset($_GET['by']) ? mysqli_real_escape_string($link, $_GET['by']) : 'no_drf';
-
-	if ($proc=='-'){
-		$sql="select * from docu where device='$dev' and doc_type='Monitor Sample' and status='$status' and category='$cat' order by $by ";
-	} else {
-		$sql="select * from docu where doc_type='Monitor Sample' and status='$status' and category='$cat' order by $by";
-	}
-
-	$res = mysqli_query($link, $sql);
-	if (!$res) {
-		echo "<div class='alert alert-danger'>Query error: ".htmlspecialchars(mysqli_error($link))."</div>";
-	} else {
+<?php
+// 🆕 RENDER FILTER FORM MENGGUNAKAN WRAPPER
+$wrapper->renderFilterForm();
 ?>
 
+<?php
+if (isset($_GET['submit'])){
+    // 🆕 BUILD QUERY MENGGUNAKAN WRAPPER
+    $sql = $wrapper->buildQuery();
+    
+    $result = mysqli_query($link, $sql);
+    
+    if (!$result) {
+        echo "<div class='alert alert-danger'>Query error: ".htmlspecialchars(mysqli_error($link))."</div>";
+        exit;
+    }
+    
+    $rowCount = mysqli_num_rows($result);
+    
+    $dev = $_GET['device'] ?? '';
+    $proc = $_GET['proc'] ?? '';
+    $status = $_GET['status'] ?? '';
+    $cat = $_GET['cat'] ?? '';
+?>
+
+<br /><br />
+<h1>Monitor Sample's List For Device: <strong><?php echo htmlspecialchars($dev);?></strong>
+    <?php if (!empty($proc) && $proc != '-'): ?>
+        , Process: <strong><?php echo htmlspecialchars($proc); ?></strong>
+    <?php endif; ?>
+    , Category: <strong><?php echo htmlspecialchars($cat); ?></strong>
+</h1>
+
+<?php if ($rowCount == 0): ?>
+    <div class='alert alert-warning' style='margin:20px;'>
+        <h4><span class='glyphicon glyphicon-search'></span> Tidak ada dokumen yang ditemukan</h4>
+        <p>Tidak ada dokumen Monitor Sample dengan filter yang Anda pilih.</p>
+    </div>
+<?php else: ?>
+
 <table class="table table-hover">
-<h1>Monitor Sample's List For Device: <strong><?php echo htmlspecialchars($dev);?></strong>, Process: <strong><?php echo htmlspecialchars($proc); ?></strong>, Category: <strong><?php echo htmlspecialchars($cat); ?></strong></h1>
 <thead style="background:#00FFFF;">
 <tr>
-	<th>No</th>
-	<th>Date</th>
-	<th><a href='form_prod.php?device=<?php echo urlencode($dev); ?>&by=no_doc&status=<?php echo urlencode($status); ?>&proc=<?php echo urlencode($proc);?>&cat=<?php echo urlencode($cat); ?>&submit=Show'>No. Document</a></th>
-	<th>No Rev.</th>
-	<th><a href='form_prod.php?device=<?php echo urlencode($dev); ?>&by=no_drf&status=<?php echo urlencode($status); ?>&proc=<?php echo urlencode($proc);?>&cat=<?php echo urlencode($cat); ?>&submit=Show'>drf</a></th>
-	<th><a href='form_prod.php?device=<?php echo urlencode($dev); ?>&by=title&status=<?php echo urlencode($status); ?>&proc=<?php echo urlencode($proc);?>&cat=<?php echo urlencode($cat); ?>&submit=Show'>Title</a></th>
-	<th>Process</th>
-	<th>Section</th>
-	<th>Action</th>
-	<th>Sosialisasi</th>
+    <th>No</th>
+    <th>Date</th>
+    <th>No. Document</th>
+    <th>No Rev.</th>
+    <th>DRF</th>
+    <th>Title</th>
+    <th>Process</th>
+    <th>Section</th>
+    <th>Action</th>
+    <th>Sosialisasi</th>
 </tr>
 </thead>
 <tbody>
 <?php
 $i=1;
-while($info = mysqli_fetch_array($res)) 
+while($info = mysqli_fetch_array($result)) 
 { 
-	$has_sos = !empty($info['sos_file']);
-	$tempat = ($info['no_drf'] > 12967) ? $info['doc_type'] : 'document';
+    $has_sos = !empty($info['sos_file']);
+    $tempat = ($info['no_drf'] > 12967) ? $info['doc_type'] : 'document';
 ?>
 <tr>
-	<td><?php echo $i; ?></td>
-	<td><?php echo htmlspecialchars($info['tgl_upload']);?></td>
-	<td><?php echo htmlspecialchars($info['no_doc']);?></td>
-	<td><?php echo htmlspecialchars($info['no_rev']);?></td>
-	<td><?php echo htmlspecialchars($info['no_drf']);?></td>
-	<td>
-		<a href="<?php echo htmlspecialchars($tempat . '/' . $info['file']); ?>" target="_blank">
-			<?php echo htmlspecialchars($info['title']);?>
-		</a>
-	</td>
-	<td><?php echo htmlspecialchars($info['process']);?></td>
-	<td><?php echo htmlspecialchars($info['section']);?></td>
-	<td style="white-space:nowrap;">
-		<a href="detail.php?drf=<?php echo urlencode($info['no_drf']);?>&no_doc=<?php echo urlencode($info['no_doc']);?>" class="btn btn-xs btn-info" title="lihat detail"><span class="glyphicon glyphicon-search" ></span> </a>
-		<a href="lihat_approver.php?drf=<?php echo urlencode($info['no_drf']);?>" class="btn btn-xs btn-info" title="lihat approver"><span class="glyphicon glyphicon-user" ></span> </a>
-		<a href="radf.php?drf=<?php echo urlencode($info['no_drf']);?>&section=<?php echo urlencode($info['section'])?>" class="btn btn-xs btn-info" title="lihat RADF"><span class="glyphicon glyphicon-eye-open" ></span> </a>	
-		<?php if ($state=='Admin' or ($state=="Originator" and $info['user_id']==$nrp)){?>
-			<a href="edit_doc.php?drf=<?php echo urlencode($info['no_drf']);?>" class="btn btn-xs btn-primary" title="Edit Doc"><span class="glyphicon glyphicon-pencil" ></span> </a>
-			<a href="del_doc.php?drf=<?php echo urlencode($info['no_drf']);?>" class="btn btn-xs btn-danger" onClick="return confirm('Delete document <?php echo addslashes($info['no_doc'])?>?')" title="Delete Doc"><span class="glyphicon glyphicon-remove" ></span> </a>
-			<?php if ($info['status']=='Secured') { ?>
-				<a data-toggle="modal" data-target="#myModal2" 
-				   data-id="<?php echo htmlspecialchars($info['no_drf']); ?>" 
-				   data-lama="<?php echo htmlspecialchars($info['file']); ?>" 
-				   data-type="<?php echo htmlspecialchars($info['doc_type']); ?>"
-				   data-rev="<?php echo htmlspecialchars($info['no_rev']); ?>"
-				   data-status="<?php echo htmlspecialchars($info['status']); ?>" 
-				   data-tipe="<?php echo htmlspecialchars($info['category']); ?>" 
-				   class="btn btn-xs btn-success sec-file" title="Secure Document">
-					<span class="glyphicon glyphicon-play" ></span>
-				</a>
-			<?php } ?>
-		<?php } ?>
-	</td>
-	
-	<!-- Kolom Sosialisasi -->
-	<td>
-		<?php if ($has_sos) { ?>
-			<a href="lihat_sosialisasi.php?drf=<?php echo urlencode($info['no_drf']); ?>" 
-			   class="btn btn-xs btn-primary" title="Lihat Bukti Sosialisasi">
-				<span class="glyphicon glyphicon-file"></span>
-			</a>
-		<?php } else { ?>
-			<button type="button"
-				class="btn btn-xs btn-success btn-upload-sos"
-				data-drf="<?php echo htmlspecialchars($info['no_drf']);?>"
-				data-nodoc="<?php echo htmlspecialchars($info['no_doc']);?>"
-				title="Upload Bukti Sosialisasi">
-				<span class="glyphicon glyphicon-upload"></span>
-			</button>
-		<?php } ?>
-	</td>
+    <td><?php echo $i; ?></td>
+    <td><?php echo htmlspecialchars($info['tgl_upload']);?></td>
+    <td><?php echo htmlspecialchars($info['no_doc']);?></td>
+    <td><?php echo htmlspecialchars($info['no_rev']);?></td>
+    <td><?php echo htmlspecialchars($info['no_drf']);?></td>
+    <td>
+        <a href="<?php echo htmlspecialchars($tempat . '/' . $info['file']); ?>" target="_blank">
+            <?php echo htmlspecialchars($info['title']);?>
+        </a>
+    </td>
+    <td><?php echo htmlspecialchars($info['process']);?></td>
+    <td><?php echo htmlspecialchars($info['section']);?></td>
+    <td style="white-space:nowrap;">
+        <a href="detail.php?drf=<?php echo urlencode($info['no_drf']);?>&no_doc=<?php echo urlencode($info['no_doc']);?>" class="btn btn-xs btn-info" title="lihat detail"><span class="glyphicon glyphicon-search" ></span> </a>
+        <a href="lihat_approver.php?drf=<?php echo urlencode($info['no_drf']);?>" class="btn btn-xs btn-info" title="lihat approver"><span class="glyphicon glyphicon-user" ></span> </a>
+        <a href="radf.php?drf=<?php echo urlencode($info['no_drf']);?>&section=<?php echo urlencode($info['section'])?>" class="btn btn-xs btn-info" title="lihat RADF"><span class="glyphicon glyphicon-eye-open" ></span> </a>	
+        <?php if ($state=='Admin' or ($state=="Originator" and $info['user_id']==$nrp)){?>
+            <a href="edit_doc.php?drf=<?php echo urlencode($info['no_drf']);?>" class="btn btn-xs btn-primary" title="Edit Doc"><span class="glyphicon glyphicon-pencil" ></span> </a>
+            <a href="del_doc.php?drf=<?php echo urlencode($info['no_drf']);?>" class="btn btn-xs btn-danger" onClick="return confirm('Delete document <?php echo addslashes($info['no_doc'])?>?')" title="Delete Doc"><span class="glyphicon glyphicon-remove" ></span> </a>
+            <?php if ($info['status']=='Secured') { ?>
+                <a data-toggle="modal" data-target="#myModal2" 
+                   data-id="<?php echo htmlspecialchars($info['no_drf']); ?>" 
+                   data-lama="<?php echo htmlspecialchars($info['file']); ?>" 
+                   data-type="<?php echo htmlspecialchars($info['doc_type']); ?>"
+                   data-rev="<?php echo htmlspecialchars($info['no_rev']); ?>"
+                   data-status="<?php echo htmlspecialchars($info['status']); ?>" 
+                   data-tipe="<?php echo htmlspecialchars($info['category']); ?>" 
+                   class="btn btn-xs btn-success sec-file" title="Secure Document">
+                    <span class="glyphicon glyphicon-play" ></span>
+                </a>
+            <?php } ?>
+        <?php } ?>
+    </td>
+    
+    <td>
+        <?php if ($has_sos) { ?>
+            <a href="lihat_sosialisasi.php?drf=<?php echo urlencode($info['no_drf']); ?>" 
+               class="btn btn-xs btn-primary" title="Lihat Bukti Sosialisasi">
+                <span class="glyphicon glyphicon-file"></span>
+            </a>
+        <?php } else { ?>
+            <button type="button"
+                class="btn btn-xs btn-success btn-upload-sos"
+                data-drf="<?php echo htmlspecialchars($info['no_drf']);?>"
+                data-nodoc="<?php echo htmlspecialchars($info['no_doc']);?>"
+                title="Upload Bukti Sosialisasi">
+                <span class="glyphicon glyphicon-upload"></span>
+            </button>
+        <?php } ?>
+    </td>
 </tr>
 <?php 
 $i++;
@@ -291,8 +272,17 @@ $i++;
 ?>
 </tbody>
 </table>
-<?php } ?>
-<?php } ?>
+
+<?php
+    endif;
+    mysqli_free_result($result);
+} else {
+    echo "<div class='alert alert-info' style='margin-top:20px;'>";
+    echo "<h4><span class='glyphicon glyphicon-info-sign'></span> Cara Menggunakan</h4>";
+    echo "<p>Pilih <strong>Section</strong>, <strong>Device</strong>, <strong>Process</strong> (opsional), <strong>Status</strong>, dan <strong>Category</strong>, lalu klik <strong>Show</strong>.</p>";
+    echo "</div>";
+}
+?>
 
 <!-- Modal Secure Document -->
 <div class="modal fade" id="myModal2" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
