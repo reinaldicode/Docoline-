@@ -4550,3 +4550,307 @@ SMTP Debug: SERVER -> CLIENT: 221 2.0.0 Bye
 ✓✓✓ EMAIL SENT SUCCESSFULLY ✓✓✓
 Total recipients: 2
 
+=== START SAVE PROCESS (SET APPROVER) ===
+Time: 2025-10-17 06:26:36
+Total selected reviewers: 1
+Document Info - ID: 17281, Type: test, ISO: 1, No: REI-JSJ-09-04-2025
+Section (normalized): Accounting
+=== Processing Selected Reviewers ===
+Processing item 0: Array
+(
+    [0] => 002158
+    [1] => Primandi Baskoro
+    [2] => primandi@ssi.sharp-world.com
+    [3] => Research and Development
+)
+
+Reviewer: Primandi Baskoro (primandi@ssi.sharp-world.com) - Section: Research and Development
+✓ Database insert successful for Primandi Baskoro (section: Research and Development)
+✓ Added to recipients list: primandi@ssi.sharp-world.com
+=== Database Insert Summary ===
+Successfully inserted: 1
+Failed to insert: 0
+Duplicates skipped: 0
+Total recipients for email: 1
+=== Email Preparation ===
+SMTP config loaded from smtp.php
+✓ Email address added: primandi@ssi.sharp-world.com (Primandi Baskoro)
+=== Email Recipients Summary ===
+Total email addresses added to mail: 1
+PHPMailer recipients list: Array
+(
+    [primandi@ssi.sharp-world.com] => 1
+)
+
+=== Attempting to Send Email ===
+SMTP Debug: SMTP ERROR: Failed to connect to server: php_network_getaddresses: getaddrinfo for mailrelay.jp.sharp failed: No such host is known.  (0)
+SMTP Debug: SMTP connect() failed. https://github.com/PHPMailer/PHPMailer/wiki/Troubleshooting
+✗✗✗ EMAIL SEND FAILED ✗✗✗
+Mailer Error: SMTP connect() failed. https://github.com/PHPMailer/PHPMailer/wiki/Troubleshooting
+
+=== START SAVE PROCESS (SET APPROVER) ===
+Time: 2025-10-17 08:38:08
+Total selected reviewers: 1
+Document Info - ID: 17282, Type: test, ISO: 1, No: REI-JSJ-09-04-2025
+Section (normalized): Accounting
+=== Processing Selected Reviewers ===
+Processing item 0: Array
+(
+    [0] => 003115
+    [1] => Henis
+    [2] => rnd@ssi.sharp-world.com
+    [3] => Research and Development
+)
+
+Reviewer: Henis (rnd@ssi.sharp-world.com) - Section: Research and Development
+✓ Database insert successful for Henis (section: Research and Development)
+✓ Added to recipients list: rnd@ssi.sharp-world.com
+=== Database Insert Summary ===
+Successfully inserted: 1
+Failed to insert: 0
+Duplicates skipped: 0
+Total recipients for email: 1
+=== Email Preparation ===
+SMTP config loaded from smtp.php
+✓ Email address added: rnd@ssi.sharp-world.com (Henis)
+=== Email Recipients Summary ===
+Total email addresses added to mail: 1
+PHPMailer recipients list: Array
+(
+    [rnd@ssi.sharp-world.com] => 1
+)
+
+=== Attempting to Send Email ===
+SMTP Debug: SMTP ERROR: Failed to connect to server: php_network_getaddresses: getaddrinfo for mailrelay.jp.sharp failed: No such host is known.  (0)
+SMTP Debug: SMTP connect() failed. https://github.com/PHPMailer/PHPMailer/wiki/Troubleshooting
+✗✗✗ EMAIL SEND FAILED ✗✗✗
+Mailer Error: SMTP connect() failed. https://github.com/PHPMailer/PHPMailer/wiki/Troubleshooting
+
+=== START SAVE PROCESS (SET APPROVER) ===
+Time: 2025-10-20 00:32:20
+Total selected reviewers: 1
+Document Info - ID: 17283, Type: HSS, ISO: 1, No: REI-JSJ-09-04-2025
+Section (normalized): Accounting
+=== Processing Selected Reviewers ===
+Processing item 0: Array
+(
+    [0] => 002158
+    [1] => Primandi Baskoro
+    [2] => primandi@ssi.sharp-world.com
+    [3] => Research and Development
+)
+
+Reviewer: Primandi Baskoro (primandi@ssi.sharp-world.com) - Section: Research and Development
+✓ Database insert successful for Primandi Baskoro (section: Research and Development)
+✓ Added to recipients list: primandi@ssi.sharp-world.com
+=== Database Insert Summary ===
+Successfully inserted: 1
+Failed to insert: 0
+Duplicates skipped: 0
+Total recipients for email: 1
+=== Email Preparation ===
+SMTP config loaded from smtp.php
+✓ Email address added: primandi@ssi.sharp-world.com (Primandi Baskoro)
+=== Email Recipients Summary ===
+Total email addresses added to mail: 1
+PHPMailer recipients list: Array
+(
+    [primandi@ssi.sharp-world.com] => 1
+)
+
+=== Attempting to Send Email ===
+SMTP Debug: SMTP ERROR: Failed to connect to server: php_network_getaddresses: getaddrinfo for mailrelay.jp.sharp failed: No such host is known.  (0)
+SMTP Debug: SMTP connect() failed. https://github.com/PHPMailer/PHPMailer/wiki/Troubleshooting
+✗✗✗ EMAIL SEND FAILED ✗✗✗
+Mailer Error: SMTP connect() failed. https://github.com/PHPMailer/PHPMailer/wiki/Troubleshooting
+
+=== START SAVE PROCESS (SET APPROVER) ===
+Time: 2025-10-20 01:58:16
+Total selected reviewers: 1
+Document Info - ID: 17284, Type: test, ISO: 1, No: 23w1
+Section (normalized): Accounting
+=== Processing Selected Reviewers ===
+Processing item 0: Array
+(
+    [0] => 002158
+    [1] => Primandi Baskoro
+    [2] => primandi@ssi.sharp-world.com
+    [3] => Research and Development
+)
+
+Reviewer: Primandi Baskoro (primandi@ssi.sharp-world.com) - Section: Research and Development
+✓ Database insert successful for Primandi Baskoro (section: Research and Development)
+✓ Added to recipients list: primandi@ssi.sharp-world.com
+=== Database Insert Summary ===
+Successfully inserted: 1
+Failed to insert: 0
+Duplicates skipped: 0
+Total recipients for email: 1
+=== Email Preparation ===
+SMTP config loaded from smtp.php
+✓ Email address added: primandi@ssi.sharp-world.com (Primandi Baskoro)
+=== Email Recipients Summary ===
+Total email addresses added to mail: 1
+PHPMailer recipients list: Array
+(
+    [primandi@ssi.sharp-world.com] => 1
+)
+
+=== Attempting to Send Email ===
+SMTP Debug: SMTP ERROR: Failed to connect to server: php_network_getaddresses: getaddrinfo for mailrelay.jp.sharp failed: No such host is known.  (0)
+SMTP Debug: SMTP connect() failed. https://github.com/PHPMailer/PHPMailer/wiki/Troubleshooting
+✗✗✗ EMAIL SEND FAILED ✗✗✗
+Mailer Error: SMTP connect() failed. https://github.com/PHPMailer/PHPMailer/wiki/Troubleshooting
+
+=== START SAVE PROCESS (SET APPROVER) ===
+Time: 2025-10-20 02:12:39
+Total selected reviewers: 1
+Document Info - ID: 17285, Type: test, ISO: 1, No: REI-JSJ-09-04-2025
+Section (normalized): Accounting
+=== Processing Selected Reviewers ===
+Processing item 0: Array
+(
+    [0] => 002162
+    [1] => Rahmat Priyo Utomo
+    [2] => rahmat@ssi.sharp-world.com
+    [3] => Accounting
+)
+
+Reviewer: Rahmat Priyo Utomo (rahmat@ssi.sharp-world.com) - Section: Accounting
+✓ Database insert successful for Rahmat Priyo Utomo (section: Accounting)
+✓ Added to recipients list: rahmat@ssi.sharp-world.com
+=== Database Insert Summary ===
+Successfully inserted: 1
+Failed to insert: 0
+Duplicates skipped: 0
+Total recipients for email: 1
+=== Email Preparation ===
+SMTP config loaded from smtp.php
+✓ Email address added: rahmat@ssi.sharp-world.com (Rahmat Priyo Utomo)
+=== Email Recipients Summary ===
+Total email addresses added to mail: 1
+PHPMailer recipients list: Array
+(
+    [rahmat@ssi.sharp-world.com] => 1
+)
+
+=== Attempting to Send Email ===
+SMTP Debug: SMTP ERROR: Failed to connect to server: php_network_getaddresses: getaddrinfo for mailrelay.jp.sharp failed: No such host is known.  (0)
+SMTP Debug: SMTP connect() failed. https://github.com/PHPMailer/PHPMailer/wiki/Troubleshooting
+✗✗✗ EMAIL SEND FAILED ✗✗✗
+Mailer Error: SMTP connect() failed. https://github.com/PHPMailer/PHPMailer/wiki/Troubleshooting
+
+=== START SAVE PROCESS (SET APPROVER) ===
+Time: 2025-10-20 02:37:03
+Total selected reviewers: 1
+Document Info - ID: 17286, Type: WI, ISO: 1, No: REI-JSJ-09-04-2025
+Section (normalized): Accounting
+=== Processing Selected Reviewers ===
+Processing item 0: Array
+(
+    [0] => 002162
+    [1] => Rahmat Priyo Utomo
+    [2] => rahmat@ssi.sharp-world.com
+    [3] => Accounting
+)
+
+Reviewer: Rahmat Priyo Utomo (rahmat@ssi.sharp-world.com) - Section: Accounting
+✓ Database insert successful for Rahmat Priyo Utomo (section: Accounting)
+✓ Added to recipients list: rahmat@ssi.sharp-world.com
+=== Database Insert Summary ===
+Successfully inserted: 1
+Failed to insert: 0
+Duplicates skipped: 0
+Total recipients for email: 1
+=== Email Preparation ===
+SMTP config loaded from smtp.php
+✓ Email address added: rahmat@ssi.sharp-world.com (Rahmat Priyo Utomo)
+=== Email Recipients Summary ===
+Total email addresses added to mail: 1
+PHPMailer recipients list: Array
+(
+    [rahmat@ssi.sharp-world.com] => 1
+)
+
+=== Attempting to Send Email ===
+SMTP Debug: SMTP ERROR: Failed to connect to server: php_network_getaddresses: getaddrinfo for mailrelay.jp.sharp failed: No such host is known.  (0)
+SMTP Debug: SMTP connect() failed. https://github.com/PHPMailer/PHPMailer/wiki/Troubleshooting
+✗✗✗ EMAIL SEND FAILED ✗✗✗
+Mailer Error: SMTP connect() failed. https://github.com/PHPMailer/PHPMailer/wiki/Troubleshooting
+
+=== START SAVE PROCESS (SET APPROVER) ===
+Time: 2025-10-20 02:54:52
+Total selected reviewers: 1
+Document Info - ID: 17287, Type: SATO, ISO: 1, No: REI-JSJ-09-04-2025
+Section (normalized): Accounting
+=== Processing Selected Reviewers ===
+Processing item 0: Array
+(
+    [0] => 002162
+    [1] => Rahmat Priyo Utomo
+    [2] => rahmat@ssi.sharp-world.com
+    [3] => Accounting
+)
+
+Reviewer: Rahmat Priyo Utomo (rahmat@ssi.sharp-world.com) - Section: Accounting
+✓ Database insert successful for Rahmat Priyo Utomo (section: Accounting)
+✓ Added to recipients list: rahmat@ssi.sharp-world.com
+=== Database Insert Summary ===
+Successfully inserted: 1
+Failed to insert: 0
+Duplicates skipped: 0
+Total recipients for email: 1
+=== Email Preparation ===
+SMTP config loaded from smtp.php
+✓ Email address added: rahmat@ssi.sharp-world.com (Rahmat Priyo Utomo)
+=== Email Recipients Summary ===
+Total email addresses added to mail: 1
+PHPMailer recipients list: Array
+(
+    [rahmat@ssi.sharp-world.com] => 1
+)
+
+=== Attempting to Send Email ===
+SMTP Debug: SMTP ERROR: Failed to connect to server: php_network_getaddresses: getaddrinfo for mailrelay.jp.sharp failed: No such host is known.  (0)
+SMTP Debug: SMTP connect() failed. https://github.com/PHPMailer/PHPMailer/wiki/Troubleshooting
+✗✗✗ EMAIL SEND FAILED ✗✗✗
+Mailer Error: SMTP connect() failed. https://github.com/PHPMailer/PHPMailer/wiki/Troubleshooting
+
+=== START SAVE PROCESS (SET APPROVER) ===
+Time: 2025-10-20 03:35:45
+Total selected reviewers: 1
+Document Info - ID: 17288, Type: Procedure, ISO: 1, No: REI-JSJ-09-04-2025
+Section (normalized): Accounting
+=== Processing Selected Reviewers ===
+Processing item 0: Array
+(
+    [0] => 002162
+    [1] => Rahmat Priyo Utomo
+    [2] => rahmat@ssi.sharp-world.com
+    [3] => Accounting
+)
+
+Reviewer: Rahmat Priyo Utomo (rahmat@ssi.sharp-world.com) - Section: Accounting
+✓ Database insert successful for Rahmat Priyo Utomo (section: Accounting)
+✓ Added to recipients list: rahmat@ssi.sharp-world.com
+=== Database Insert Summary ===
+Successfully inserted: 1
+Failed to insert: 0
+Duplicates skipped: 0
+Total recipients for email: 1
+=== Email Preparation ===
+SMTP config loaded from smtp.php
+✓ Email address added: rahmat@ssi.sharp-world.com (Rahmat Priyo Utomo)
+=== Email Recipients Summary ===
+Total email addresses added to mail: 1
+PHPMailer recipients list: Array
+(
+    [rahmat@ssi.sharp-world.com] => 1
+)
+
+=== Attempting to Send Email ===
+SMTP Debug: SMTP ERROR: Failed to connect to server: php_network_getaddresses: getaddrinfo for mailrelay.jp.sharp failed: No such host is known.  (0)
+SMTP Debug: SMTP connect() failed. https://github.com/PHPMailer/PHPMailer/wiki/Troubleshooting
+✗✗✗ EMAIL SEND FAILED ✗✗✗
+Mailer Error: SMTP connect() failed. https://github.com/PHPMailer/PHPMailer/wiki/Troubleshooting
+

@@ -1,22 +1,20 @@
 <?php
 include('header.php');
-?>
-
-<br />
-<br />
-<br />
-<br />
-
-</head>
-
-<?php
-//include 'index.php';
 include 'koneksi.php';
 
-// Ambil variabel dari session dengan aman
+// 🆕 LOAD SMART WRAPPER
+require_once('legacy_wrapper.php');
+$wrapper = new LegacyFilterWrapper('Obsolate', $link);
+
+// Ambil session state
 $state = $_SESSION['state'] ?? '';
-$nrp = $_SESSION['nrp'] ?? '';
+$nrp   = $_SESSION['nrp'] ?? '';
 ?>
+
+<br />
+<br />
+<br />
+<br />
 
 <script type="text/javascript" src="bootstrap/js/jquery.min.js"></script>
 
@@ -72,181 +70,130 @@ $(document).ready(function () {
 </script>
 
 <h3>Obsolate Document's List</h3>
-<form action="" method="GET" >
-	<div class="col-sm-4">
-				<select name="tipe" class="form-control">
-					<option value="0"> --- Select Type --- </option>
-					
-					<option value="WI"> WI </option>
-					<option value="Procedure"> Procedure </option>
-					<option value="Form"> Form </option>
-					
-										
-									</select>		
-
-	<?php 
-		$sect="select * from section order by sect_name";
-		$sql_sect=mysqli_query($link, $sect);
-
-	?>
-		 <select name="section" class="form-control">
-						<option value="0"> --- Select Section --- </option>
-						<?php while($data_sec = mysqli_fetch_array( $sql_sect )) 
-						{ ?>
-						<option value="<?php echo htmlspecialchars($data_sec['id_section']); ?>"> <?php echo htmlspecialchars($data_sec['sect_name']); ?> </option>
-						<?php } ?>
-						</option>
-					</select>
-					
-		<select name="cat" class="form-control">
-						<option value="0"> --- Select Category --- </option>
-						
-						<option value="External"> External </option>
-						<option value="Internal" selected="selected"> Internal </option>
-						
-						</option>
-					</select>
-			
-					
-					
-	 <input type="submit" name="submit" value="Show" class="btn btn-primary" />
-    </div>
-    	<br />
-    		<br />
-    			<br />
-    			
-	</form>
 
 <?php
-if (isset($_GET['submit'])){
+// 🆕 RENDER FILTER FORM menggunakan Smart Wrapper
+echo $wrapper->renderFilterForm();
 
-    // Ambil input dengan aman
-    $section = mysqli_real_escape_string($link, $_GET['section'] ?? '');
-    $tipe = mysqli_real_escape_string($link, $_GET['tipe'] ?? '');
-    $cat = mysqli_real_escape_string($link, $_GET['cat'] ?? '');
+// 🆕 BUILD QUERY menggunakan Smart Wrapper
+$sql = $wrapper->buildQuery();
 
-	$sql="select * from docu where section='$section' and doc_type='$tipe' and category='$cat' and status='Obsolate' order by no_drf";	
-	
-	// echo $sql;
+if (isset($_GET['submit']) && $sql) {
+    $res = mysqli_query($link, $sql);
+    
+    // Get filter info untuk display
+    $filterInfo = $wrapper->getFilterInfo();
 ?>
+
 <br /><br />
-
-<?php
-
-$res=mysqli_query($link, $sql);
-//$rows = mysql_num_rows($res);
-
-//echo $sql;
-
-
-?>
-<br />
 <div class="table-responsive">
 <table class="table table-hover">
-<h1> Obsolate <?php echo htmlspecialchars($tipe); ?> List For Section: <strong><?php echo htmlspecialchars($section);?></strong> , Category: <strong><?php echo htmlspecialchars($tipe);?></strong></h1>
+<h1>
+    Obsolate <?php echo htmlspecialchars($filterInfo['tipe'] ?? 'Document'); ?> List 
+    For Section: <strong><?php echo htmlspecialchars($filterInfo['section_name'] ?? 'All'); ?></strong>, 
+    Category: <strong><?php echo htmlspecialchars($filterInfo['category'] ?? 'All'); ?></strong>
+</h1>
 <thead bgcolor="#00FFFF">
 <tr>
-	<td>No</td>
-	<td>Date</td>
-	<td>No Document</td>
-	<td>No Rev.</td>
-	<td>No. Drf</td>
-	<td>Title</td>
-	<td>Process</td>
-	<td>Section</td>
-	<td>Action</td>
-	<td>Sosialisasi</td>
+    <td>No</td>
+    <td>Date</td>
+    <td>No Document</td>
+    <td>No Rev.</td>
+    <td>No. Drf</td>
+    <td>Title</td>
+    <td>Process</td>
+    <td>Section</td>
+    <td>Action</td>
+    <td>Sosialisasi</td>
 </tr>
 </thead>
+<tbody>
 <?php
-$i=1;
-while($info = mysqli_fetch_array($res)) 
-{ 
-    // periksa apakah ada bukti sosialisasi
+$i = 1;
+while($info = mysqli_fetch_array($res)) { 
     $has_sos = !empty($info['sos_file']);
 ?>
-<tbody>
 <tr>
-	<td>
-		<?php echo $i; ?>
-	</td>
-	<td>
-		<?php echo htmlspecialchars($info['tgl_upload']);?>
-	</td>
-	<td>
-		<?php echo htmlspecialchars($info['no_doc']);?>
-	</td>
-	<td>
-		<?php echo htmlspecialchars($info['no_rev']);?>
-	</td>
-	<td>
-		<?php echo htmlspecialchars($info['no_drf']);?>
-	</td>
-	<td>
-	<?php if ($info['no_drf']>12800){$tempat=$info['doc_type'];} else {$tempat='document';}?>
-	<a href="<?php echo htmlspecialchars($tempat); ?>/<?php echo htmlspecialchars($info['file']); ?>" >
-		<?php echo htmlspecialchars($info['title']);?>
-		</a>
-	</td>
-	<td>
-		<?php echo htmlspecialchars($info['process']);?>
-	</td>
-	<td>
-		<?php echo htmlspecialchars($info['section']);?>
-	</td>
-	<td style="white-space:nowrap;">
-		<a href="detail.php?drf=<?php echo urlencode($info['no_drf']);?>" class="btn btn-xs btn-info" title="lihat detail"><span class="glyphicon glyphicon-search" ></span> </a>
-	<a href="lihat_approver.php?drf=<?php echo urlencode($info['no_drf']);?>" class="btn btn-xs btn-info" title="lihat approver"><span class="glyphicon glyphicon-user" ></span> </a>
-	<a href="radf.php?drf=<?php echo urlencode($info['no_drf']);?>&section=<?php echo urlencode($info['section'])?>" class="btn btn-xs btn-info" title="lihat RADF"><span class="glyphicon glyphicon-eye-open" ></span> </a>
-	<?php if ($state=='Admin' || $state=="Originator"){?>
-	<a href="edit_doc.php?drf=<?php echo urlencode($info['no_drf']);?>" class="btn btn-xs btn-primary" title="Edit Doc"><span class="glyphicon glyphicon-pencil" ></span> </a>
-	<a href="del_doc.php?drf=<?php echo urlencode($info['no_drf']);?>" class="btn btn-xs btn-danger" onClick="return confirm('Delete document <?php echo addslashes($info['no_doc'])?>?')" title="Delete Doc"><span class="glyphicon glyphicon-remove" ></span> </a>
-	
-	<?php if ($info['status']=='Approved') {?>
-	<a data-toggle="modal" data-target="#myModal2" 
-       data-id="<?php echo htmlspecialchars($info['no_drf']);?>" 
-       data-lama="<?php echo htmlspecialchars($info['file']);?>" 
-       data-type="<?php echo htmlspecialchars($info['doc_type']);?>"
-       data-rev="<?php echo htmlspecialchars($info['no_rev']);?>"
-       data-section="<?php echo htmlspecialchars($info['section']);?>"
-       data-status="<?php echo htmlspecialchars($info['status']);?>" 
-       data-tipe="<?php echo htmlspecialchars($info['category']);?>"
-       class="btn btn-xs btn-success sec-file" 
-       title="Secure Document">
-	<span class="glyphicon glyphicon-play" ></span></a>
-	<?php }} ?>
-	</td>
-	
-	<!-- Kolom Sosialisasi - SAMA SEPERTI form_other.php -->
-	<td>
-	    <?php if ($has_sos) { ?>
-	        <a href="lihat_sosialisasi.php?drf=<?php echo urlencode($info['no_drf']); ?>" 
-	           class="btn btn-xs btn-primary" title="Lihat Bukti Sosialisasi">
-	            <span class="glyphicon glyphicon-file"></span>
-	        </a>
-	    <?php } else { ?>
-	        <button type="button"
-	            class="btn btn-xs btn-success btn-upload-sos"
-	            data-drf="<?php echo htmlspecialchars($info['no_drf']);?>"
-	            data-nodoc="<?php echo htmlspecialchars($info['no_doc']);?>"
-	            title="Upload Bukti Sosialisasi">
-	            <span class="glyphicon glyphicon-upload"></span>
-	        </button>
-	    <?php } ?>
-	</td>
-	
+    <td><?php echo $i; ?></td>
+    <td><?php echo htmlspecialchars($info['tgl_upload']); ?></td>
+    <td><?php echo htmlspecialchars($info['no_doc']); ?></td>
+    <td><?php echo htmlspecialchars($info['no_rev']); ?></td>
+    <td><?php echo htmlspecialchars($info['no_drf']); ?></td>
+    <td>
+        <?php 
+        $tempat = ($info['no_drf'] > 12800) ? $info['doc_type'] : 'document';
+        ?>
+        <a href="<?php echo htmlspecialchars($tempat); ?>/<?php echo htmlspecialchars($info['file']); ?>">
+            <?php echo htmlspecialchars($info['title']); ?>
+        </a>
+    </td>
+    <td><?php echo htmlspecialchars($info['process']); ?></td>
+    <td><?php echo htmlspecialchars($info['section']); ?></td>
+    <td style="white-space:nowrap;">
+        <a href="detail.php?drf=<?php echo urlencode($info['no_drf']); ?>" class="btn btn-xs btn-info" title="lihat detail">
+            <span class="glyphicon glyphicon-search"></span>
+        </a>
+        <a href="lihat_approver.php?drf=<?php echo urlencode($info['no_drf']); ?>" class="btn btn-xs btn-info" title="lihat approver">
+            <span class="glyphicon glyphicon-user"></span>
+        </a>
+        <a href="radf.php?drf=<?php echo urlencode($info['no_drf']); ?>&section=<?php echo urlencode($info['section']); ?>" class="btn btn-xs btn-info" title="lihat RADF">
+            <span class="glyphicon glyphicon-eye-open"></span>
+        </a>
+        
+        <?php if ($state == 'Admin' || $state == "Originator") { ?>
+            <a href="edit_doc.php?drf=<?php echo urlencode($info['no_drf']); ?>" class="btn btn-xs btn-primary" title="Edit Doc">
+                <span class="glyphicon glyphicon-pencil"></span>
+            </a>
+            <a href="del_doc.php?drf=<?php echo urlencode($info['no_drf']); ?>" class="btn btn-xs btn-danger" onClick="return confirm('Delete document <?php echo addslashes($info['no_doc']); ?>?')" title="Delete Doc">
+                <span class="glyphicon glyphicon-remove"></span>
+            </a>
+            
+            <?php if ($info['status'] == 'Approved') { ?>
+                <a data-toggle="modal" data-target="#myModal2" 
+                   data-id="<?php echo htmlspecialchars($info['no_drf']); ?>" 
+                   data-lama="<?php echo htmlspecialchars($info['file']); ?>" 
+                   data-type="<?php echo htmlspecialchars($info['doc_type']); ?>"
+                   data-rev="<?php echo htmlspecialchars($info['no_rev']); ?>"
+                   data-section="<?php echo htmlspecialchars($info['section']); ?>"
+                   data-status="<?php echo htmlspecialchars($info['status']); ?>" 
+                   data-tipe="<?php echo htmlspecialchars($info['category']); ?>"
+                   class="btn btn-xs btn-success sec-file" 
+                   title="Secure Document">
+                    <span class="glyphicon glyphicon-play"></span>
+                </a>
+            <?php } ?>
+        <?php } ?>
+    </td>
+    
+    <!-- Kolom Sosialisasi -->
+    <td>
+        <?php if ($has_sos) { ?>
+            <a href="lihat_sosialisasi.php?drf=<?php echo urlencode($info['no_drf']); ?>" 
+               class="btn btn-xs btn-primary" title="Lihat Bukti Sosialisasi">
+                <span class="glyphicon glyphicon-file"></span>
+            </a>
+        <?php } else { ?>
+            <button type="button"
+                class="btn btn-xs btn-success btn-upload-sos"
+                data-drf="<?php echo htmlspecialchars($info['no_drf']); ?>"
+                data-nodoc="<?php echo htmlspecialchars($info['no_doc']); ?>"
+                title="Upload Bukti Sosialisasi">
+                <span class="glyphicon glyphicon-upload"></span>
+            </button>
+        <?php } ?>
+    </td>
 </tr>
-</tbody>
-<div>
 <?php 
-$i++;} 
-
-
-}
-
-
-?> 
+    $i++;
+} 
+?>
+</tbody>
+</table>
 </div>
+
+<?php
+}
+?>
 
 <!-- Modal Secure Document -->
 <div class="modal fade" id="myModal2" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
@@ -293,11 +240,9 @@ $i++;}
                     <input type="hidden" name="drf" id="modal_upload_drf" value="">
                     <?php
                     if (empty($_SESSION['csrf_token'])) {
-                        if (function_exists('random_bytes')) {
-                            $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-                        } else {
-                            $_SESSION['csrf_token'] = bin2hex(openssl_random_pseudo_bytes(32));
-                        }
+                        $_SESSION['csrf_token'] = function_exists('random_bytes') 
+                            ? bin2hex(random_bytes(32))
+                            : bin2hex(openssl_random_pseudo_bytes(32));
                     }
                     ?>
                     <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
@@ -318,5 +263,3 @@ $i++;}
         </div>
     </div>
 </div>
-
-<script src="bootstrap/js/bootstrap.min.js"></script>

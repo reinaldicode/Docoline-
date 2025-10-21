@@ -14,5 +14,3 @@ include 'koneksi.php';
 
 
 <h2>Work Instruction List</h2>
-<a href="wi_prod.php" class="btn btn-primary" style="margin-left:50px;">Production</a>
-<a href="wi_other.php" class="btn btn-primary" >Others</a>

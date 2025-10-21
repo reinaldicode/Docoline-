@@ -1,19 +1,18 @@
-<?php 
-// Sertakan file di awal. Asumsi form_login.php sudah memuat koneksi ($link) dan session.
-include "form_login.php"; 
+<?php
+include "form_login.php";
 
-// Ambil variabel dari session dengan aman
+// 🆕 LOAD SMART WRAPPER
+require_once('legacy_wrapper.php');
+$wrapper = new LegacyFilterWrapper('Form', $link);
+
+// Ambil session state
 $state = $_SESSION['state'] ?? '';
 $nrp = $_SESSION['nrp'] ?? '';
-
-// Ambil variabel dari URL dengan aman menggunakan null coalescing operator (??)
-$dev_param = $_GET['device'] ?? '';
-$proc_param = $_GET['proc'] ?? '';
-$status_param = $_GET['status'] ?? '';
-$cat_param = $_GET['cat'] ?? '';
 ?>
+
 <br />
 
+<!-- jQuery -->
 <script type="text/javascript" src="bootstrap/js/jquery.min.js"></script>
 
 <style>
@@ -21,6 +20,8 @@ $cat_param = $_GET['cat'] ?? '';
 .modal .form-control { margin-bottom:10px; }
 </style>
 
+<?php if ($wrapper->needsCascadeScript()): ?>
+<!-- CASCADE DROPDOWN SCRIPT -->
 <script type="text/javascript">
 $(document).ready(function() {
     function setupDeviceDropdownListener() {
@@ -91,121 +92,101 @@ $(document).ready(function() {
     });
 });
 </script>
+<?php else: ?>
+<!-- STANDARD SCRIPT -->
+<script type="text/javascript">
+$(document).ready(function () {
+    $(document).on('click', '.sec-file', function(e) {
+        e.preventDefault();
+        var drf = $(this).data('id') || '';
+        var lama = $(this).data('lama') || '';
+        var type = $(this).data('type') || '';
+        var rev = $(this).data('rev') || '';
+        var status = $(this).data('status') || '';
+        var tipe = $(this).data('tipe') || '';
+        
+        $('#myModal2 #drf').val(drf);
+        $('#myModal2 #lama').val(lama);
+        $('#myModal2 #type').val(type);
+        $('#myModal2 #rev').val(rev);
+        $('#myModal2 #status').val(status);
+        $('#myModal2 #tipe').val(tipe);
+        $('#myModal2').modal('show');
+    });
 
-<div class="row">
-    <div class="col-xs-4 well well-lg">
-        <h2>Select Device & Process</h2>
-        <form action="" method="GET">
-            <table class="table">
-                <tbody>
-                    <tr>
-                        <td>Section</td>
-                        <td>:</td>
-                        <td>
-                            <?php include('func.php'); ?>
-                            <select name="section" id="section" class="form-control">
-                                <option value="" selected>Select Section</option>
-                                <?php getTierOne(); ?>
-                            </select> 
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>Device</td>
-                        <td>:</td>
-                        <td>
-                            <span id="wait_1" style="display: none;"><img alt="Please Wait" src="images/wait.gif"/></span>
-                            <span id="result_1"></span> 
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>Process</td>
-                        <td>:</td>
-                        <td>
-                            <span id="wait_2" style="display: none;"><img alt="Please Wait" src="images/wait.gif"/></span>
-                            <span id="result_2"></span>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>Status</td>
-                        <td>:</td>
-                        <td>
-                            <select name="status" class="form-control">
-                                <option value="">--- Select Status ---</option>
-                                <option value="Secured" selected>Approved</option>
-                                <option value="Review">Review</option>
-                                <option value="Pending">Pending</option>
-                                <option value="Obsolate">Obsolete</option>
-                            </select>          
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>Category</td>
-                        <td>:</td>
-                        <td>
-                            <select name="cat" class="form-control">
-                                <option value="">--- Select Category ---</option>
-                                <option value="Internal" selected>Internal</option>
-                                <option value="Eksternal">External</option>
-                            </select>          
-                        </td>
-                    </tr>
-                    <tr>
-                        <td></td>
-                        <td></td>
-                        <td>
-                            <input type='hidden' name='by' value='no_drf'>
-                            <input type="submit" value="Show" name="submit" class="btn btn-info">
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </form>
-    </div>
-</div>
+    $(document).on('click', '.btn-upload-sos', function(e){
+        e.preventDefault();
+        var drf = $(this).data('drf') || '';
+        var nodoc = $(this).data('nodoc') || '';
+        
+        $('#modal_upload_drf').val(drf);
+        $('#modal_upload_nodoc').text(nodoc);
+        $('#modalSosialisasi').modal('show');
+    });
+
+    $('#modalSosialisasi').on('hidden.bs.modal', function () {
+        $(this).find('form')[0].reset();
+    });
+    
+    $('#myModal2').on('hidden.bs.modal', function () {
+        $(this).find('form')[0].reset();
+    });
+});
+</script>
+<?php endif; ?>
+
+<h3>Form Production</h3>
+
+<?php
+// 🆕 RENDER FILTER FORM MENGGUNAKAN WRAPPER
+$wrapper->renderFilterForm();
+?>
 
 <?php
 if (isset($_GET['submit'])) {
-
-    // Ambil input dengan aman dan berikan nilai default string kosong
-    $dev    = mysqli_real_escape_string($link, $_GET['device'] ?? '');
-    $proc   = mysqli_real_escape_string($link, $_GET['proc'] ?? '');
-    $status = mysqli_real_escape_string($link, $_GET['status'] ?? '');
-    $cat    = mysqli_real_escape_string($link, $_GET['cat'] ?? '');
-    $by     = $_GET['by'] ?? 'no_drf';
+    // 🆕 BUILD QUERY MENGGUNAKAN WRAPPER
+    $sql = $wrapper->buildQuery();
     
-    // Whitelist untuk kolom ORDER BY
-    $allowed_by_columns = ['no_doc', 'no_drf', 'title'];
-    if (!in_array($by, $allowed_by_columns)) {
-        $by = 'no_drf';
+    $result = mysqli_query($link, $sql);
+    
+    if (!$result) {
+        die("Query Gagal: " . mysqli_error($link));
     }
-
-    $sql = "";
-    if (empty($dev)) {
-        echo "<div class='alert alert-warning'>Silakan pilih Device terlebih dahulu.</div>";
-    } else {
-        if ($proc === '' || $proc === '-') {
-            $sql = "SELECT * FROM docu WHERE device='$dev' AND doc_type='Form' AND status='$status' AND (section='Production' OR dept='Production') AND category='$cat' ORDER BY `$by`";
-        } else { 
-            $sql = "SELECT * FROM docu WHERE device='$dev' AND process='$proc' AND doc_type='Form' AND status='$status' AND (section='Production' OR dept='Production') AND category='$cat' ORDER BY `$by`";
-        }
-        
-        $res = mysqli_query($link, $sql);
-        if (!$res) {
-            die("Query Gagal: " . mysqli_error($link));
-        }
+    
+    $rowCount = mysqli_num_rows($result);
+    
+    // Ambil nilai filter
+    $dev = $_GET['device'] ?? '';
+    $proc = $_GET['proc'] ?? '';
+    $status = $_GET['status'] ?? '';
+    $cat = $_GET['cat'] ?? '';
 ?>
+
+<br /><br />
+<h3>Form's List For Device: <strong><?php echo htmlspecialchars($dev);?></strong>
+    <?php if (!empty($proc) && $proc != '-'): ?>
+        , Process: <strong><?php echo htmlspecialchars($proc); ?></strong>
+    <?php endif; ?>
+    , Category: <strong><?php echo htmlspecialchars($cat); ?></strong>
+</h3>
+
+<?php if ($rowCount == 0): ?>
+    <div class='alert alert-warning' style='margin:20px;'>
+        <h4><span class='glyphicon glyphicon-search'></span> Tidak ada dokumen yang ditemukan</h4>
+        <p>Tidak ada dokumen Form Production dengan filter yang Anda pilih.</p>
+    </div>
+<?php else: ?>
 
 <div class="table-responsive">
     <table class="table table-hover">
-        <h3>Form's List For Device: <strong><?php echo htmlspecialchars($dev);?></strong>, Process: <strong><?php echo htmlspecialchars($proc); ?></strong>, Category: <strong><?php echo htmlspecialchars($cat); ?></strong></h3>
         <thead style="background:#00FFFF;">
             <tr>
                 <th>No</th>
                 <th>Date</th>
-                <th><a href="?device=<?php echo urlencode($dev); ?>&by=No_doc&status=<?php echo urlencode($status); ?>&proc=<?php echo urlencode($proc);?>&cat=<?php echo urlencode($cat); ?>&submit=Show">No. Document</a></th>
+                <th>No. Document</th>
                 <th>No Rev.</th>
-                <th><a href="?device=<?php echo urlencode($dev); ?>&by=no_drf&status=<?php echo urlencode($status); ?>&proc=<?php echo urlencode($proc);?>&cat=<?php echo urlencode($cat); ?>&submit=Show">DRF</a></th>
-                <th><a href="?device=<?php echo urlencode($dev); ?>&by=title&status=<?php echo urlencode($status); ?>&proc=<?php echo urlencode($proc);?>&cat=<?php echo urlencode($cat); ?>&submit=Show">Title</a></th>
+                <th>DRF</th>
+                <th>Title</th>
                 <th>Process</th>
                 <th>Section</th>
                 <th>Action</th>
@@ -215,8 +196,7 @@ if (isset($_GET['submit'])) {
         <tbody>
         <?php
         $i = 1;
-        while ($info = mysqli_fetch_assoc($res)) {
-            // periksa apakah ada bukti sosialisasi
+        while ($info = mysqli_fetch_assoc($result)) {
             $has_sos = !empty($info['sos_file']);
             $tempat = ($info['no_drf'] > 12967) ? $info['doc_type'] : 'document';
         ?>
@@ -239,7 +219,6 @@ if (isset($_GET['submit'])) {
                         <span class="glyphicon glyphicon-search"></span>
                     </a>
                     
-                    <!-- TOMBOL LIHAT APPROVER YANG DITAMBAHKAN -->
                     <a href="lihat_approver.php?drf=<?php echo urlencode($info['no_drf']);?>" 
                        class="btn btn-xs btn-info" title="Lihat Approver">
                         <span class="glyphicon glyphicon-user"></span>
@@ -263,7 +242,6 @@ if (isset($_GET['submit'])) {
                             <span class="glyphicon glyphicon-remove"></span>
                         </a>
                         
-                        <!-- Tombol Secure untuk SEMUA status -->
                         <a data-toggle="modal" data-target="#myModal2"
                             data-id="<?php echo htmlspecialchars($info['no_drf']); ?>"
                             data-lama="<?php echo htmlspecialchars($info['file']); ?>"
@@ -278,7 +256,6 @@ if (isset($_GET['submit'])) {
                     <?php endif; ?>
                 </td>
                 
-                <!-- Kolom Sosialisasi - DIUBAH SEPERTI form_other.php -->
                 <td>
                     <?php if ($has_sos) { ?>
                         <a href="lihat_sosialisasi.php?drf=<?php echo urlencode($info['no_drf']); ?>" 
@@ -298,14 +275,28 @@ if (isset($_GET['submit'])) {
             </tr>
         <?php 
             $i++;
-        } // akhir while
+        }
         ?>
         </tbody>
     </table>
 </div>
-<?php 
-    } // akhir else jika $dev tidak kosong
-} // akhir if submit
+
+<?php
+    endif;
+    mysqli_free_result($result);
+} else {
+    echo "<div class='alert alert-info' style='margin-top:20px;'>";
+    echo "<h4><span class='glyphicon glyphicon-info-sign'></span> Cara Menggunakan</h4>";
+    echo "<p>Untuk melihat dokumen <strong>Form Production</strong>:</p>";
+    echo "<ol>";
+    echo "<li>Pilih <strong>Section (Production)</strong></li>";
+    echo "<li>Pilih <strong>Device</strong> (akan muncul otomatis)</li>";
+    echo "<li>Pilih <strong>Process</strong> (opsional)</li>";
+    echo "<li>Pilih <strong>Status</strong> dan <strong>Category</strong></li>";
+    echo "<li>Klik <strong>Show</strong></li>";
+    echo "</ol>";
+    echo "</div>";
+}
 ?>
 
 <!-- Modal Secure Document -->
@@ -351,7 +342,6 @@ if (isset($_GET['submit'])) {
                     <p>Upload bukti sosialisasi untuk No. Document: <strong id="modal_upload_nodoc"></strong></p>
                     <input type="hidden" name="drf" id="modal_upload_drf" value="">
                     <?php
-                    // token CSRF sederhana
                     if (empty($_SESSION['csrf_token'])) {
                         if (function_exists('random_bytes')) {
                             $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
@@ -379,5 +369,4 @@ if (isset($_GET['submit'])) {
     </div>
 </div>
 
-<!-- bootstrap.js -->
 <script src="bootstrap/js/bootstrap.min.js"></script>

@@ -1,13 +1,19 @@
-<?php 
+<?php
 include 'header.php';
 include 'koneksi.php';
 
-// Ambil variabel dari session dengan aman
+// 🆕 LOAD SMART WRAPPER
+require_once('legacy_wrapper.php');
+$wrapper = new LegacyFilterWrapper('MS & ROHS', $link);
+
+// Ambil session state
 $state = $_SESSION['state'] ?? '';
 $nrp   = $_SESSION['nrp'] ?? '';
 ?>
+
 <br />
 
+<!-- jQuery -->
 <script type="text/javascript" src="bootstrap/js/jquery.min.js"></script>
 
 <style>
@@ -15,10 +21,63 @@ $nrp   = $_SESSION['nrp'] ?? '';
 .modal .form-control { margin-bottom:10px; }
 </style>
 
+<?php if ($wrapper->needsCascadeScript()): ?>
+<!-- CASCADE SCRIPT -->
 <script type="text/javascript">
-$(document).ready(function () {
-
-    // Modal Secure Document data binding
+$(document).ready(function() {
+    $('#wait_1').hide();
+    $('#wait_2').hide();
+    
+    $('#section').change(function(){
+        var section_value = $(this).val();
+        
+        if(section_value == '') {
+            $('#result_1').html('<select name="device" id="device" class="form-control"><option value="">--- Select Device ---</option></select>').show();
+            $('#result_2').html('<select name="proc" id="proc" class="form-control"><option value="">--- Select Process ---</option></select>').show();
+            return;
+        }
+        
+        $('#wait_1').show();
+        $('#result_1').hide();
+        $('#result_2').hide();
+        
+        $.ajax({
+            url: 'func.php',
+            type: 'GET',
+            data: { func: 'section', drop_var: section_value },
+            success: function(response){
+                $('#wait_1').hide();
+                $('#result_1').html(response).fadeIn();
+                $('#result_2').html('<select name="proc" id="proc" class="form-control"><option value="">--- Select Process ---</option></select>').show();
+                attachDeviceEvent();
+            }
+        });
+    });
+    
+    function attachDeviceEvent() {
+        $('#device').off('change').on('change', function(){
+            var device_value = $(this).val();
+            
+            if(device_value == '' || device_value == 'General production' || device_value == 'General PC') {
+                $('#result_2').html('<select name="proc" id="proc" class="form-control"><option value="">--- Select Process ---</option><option value="General Process">General Process</option></select>').show();
+                return;
+            }
+            
+            $('#wait_2').show();
+            $('#result_2').hide();
+            
+            $.ajax({
+                url: 'func.php',
+                type: 'GET',
+                data: { func: 'device', drop_var2: device_value },
+                success: function(response){
+                    $('#wait_2').hide();
+                    $('#result_2').html(response).fadeIn();
+                }
+            });
+        });
+    }
+    
     $(document).on('click', '.sec-file', function(e) {
         e.preventDefault();
         var drf     = $(this).data('id') || '';
@@ -40,7 +99,6 @@ $(document).ready(function () {
         $('#myModal2').modal('show');
     });
 
-    // Modal Upload Sosialisasi data binding
     $(document).on('click', '.btn-upload-sos', function(e){
         e.preventDefault();
         var drf = $(this).data('drf') || '';
@@ -51,7 +109,6 @@ $(document).ready(function () {
         $('#modalSosialisasi').modal('show');
     });
 
-    // reset form saat modal ditutup
     $('#modalSosialisasi').on('hidden.bs.modal', function () {
         $(this).find('form')[0].reset();
     });
@@ -61,112 +118,102 @@ $(document).ready(function () {
     });
 });
 </script>
+<?php else: ?>
+<!-- STANDARD SCRIPT -->
+<script type="text/javascript">
+$(document).ready(function () {
+    $(document).on('click', '.sec-file', function(e) {
+        e.preventDefault();
+        var drf     = $(this).data('id') || '';
+        var lama    = $(this).data('lama') || '';
+        var type    = $(this).data('type') || '';
+        var rev     = $(this).data('rev') || '';
+        var section = $(this).data('section') || '';
+        var status  = $(this).data('status') || '';
+        var tipe    = $(this).data('tipe') || '';
 
-<div class="row">
-    <div class="col-xs-4 well well-lg">
-        <h2>Select Section & Type</h2>
-        <form action="" method="GET">
-            <table>
-                <tr>
-                <?php 
-                $sect="select * from section order by sect_name";
-                $sql_sect=mysqli_query($link, $sect);
-                ?>
-                    <td>Section</td>
-                    <td>:</td>
-                    <td>
-                        <select name="section" class="form-control">
-                            <option value="0"> --- Select Section --- </option>
-                            <?php while($data_sec = mysqli_fetch_array($sql_sect)) { ?>
-                                <option value="<?php echo htmlspecialchars($data_sec['id_section']); ?>">
-                                    <?php echo htmlspecialchars($data_sec['sect_name']); ?>
-                                </option>
-                            <?php } ?>
-                        </select>
-                    </td>
-                </tr>
+        $('#myModal2 #drf').val(drf);
+        $('#myModal2 #lama').val(lama);
+        $('#myModal2 #type').val(type);
+        $('#myModal2 #rev').val(rev);
+        $('#myModal2 #section').val(section);
+        $('#myModal2 #status').val(status);
+        $('#myModal2 #tipe').val(tipe);
 
-                <tr>
-                    <td>Type</td>
-                    <td>:</td>
-                    <td>
-                        <select name="type" class="form-control">
-                            <option value="0"> --- Select Type --- </option>
-                            <option value="Material Spec" selected> Material Spec. </option>
-                            <option value="ROHS"> ROHS </option>
-                        </select>
-                    </td>
-                </tr>
+        $('#myModal2').modal('show');
+    });
 
-                <tr>
-                    <td>Status</td>
-                    <td>:</td>
-                    <td>
-                        <select name="status" class="form-control">
-                            <option value="0"> --- Select Status --- </option>
-                            <option value="Secured" selected> Approved </option>
-                            <option value="Review"> Review </option>
-                            <option value="Pending"> Pending </option>
-                        </select>
-                    </td>
-                </tr>
+    $(document).on('click', '.btn-upload-sos', function(e){
+        e.preventDefault();
+        var drf = $(this).data('drf') || '';
+        var nodoc = $(this).data('nodoc') || '';
+        
+        $('#modal_upload_drf').val(drf);
+        $('#modal_upload_nodoc').text(nodoc);
+        $('#modalSosialisasi').modal('show');
+    });
 
-                <tr>
-                    <td>Category</td>
-                    <td>:</td>
-                    <td>
-                        <select name="category" class="form-control">
-                            <option value="0"> --- Select Category --- </option>
-                            <option value="Internal" selected> Internal </option>
-                            <option value="External"> External </option>
-                        </select>
-                    </td>
-                </tr>
+    $('#modalSosialisasi').on('hidden.bs.modal', function () {
+        $(this).find('form')[0].reset();
+    });
+    
+    $('#myModal2').on('hidden.bs.modal', function () {
+        $(this).find('form')[0].reset();
+    });
+});
+</script>
+<?php endif; ?>
 
-                <tr>
-                    <td></td>
-                    <td></td>
-                    <td>
-                        <input type='hidden' name='by' value='no_drf'>
-                        <input type="submit" value="Show" name="submit" class="btn btn-info">
-                    </td>
-                </tr>
-            </table>
-        </form>
-    </div>
-</div>
+<h3>MS & ROHS Documents</h3>
+
+<?php
+// 🆕 RENDER FILTER FORM MENGGUNAKAN WRAPPER
+$wrapper->renderFilterForm();
+?>
 
 <?php
 if (isset($_GET['submit'])){
-
-    $section  = isset($_GET['section']) ? mysqli_real_escape_string($link, $_GET['section']) : '';
-    $status   = isset($_GET['status']) ? mysqli_real_escape_string($link, $_GET['status']) : '';
-    $type     = isset($_GET['type']) ? mysqli_real_escape_string($link, $_GET['type']) : '';
-    $category = isset($_GET['category']) ? mysqli_real_escape_string($link, $_GET['category']) : '';
-    $by       = isset($_GET['by']) ? mysqli_real_escape_string($link, $_GET['by']) : 'no_drf';
-
-    $sql="select * from docu where section='$section' and doc_type='$type' and status='$status' and category='$category' order by $by";
-
-    $res=mysqli_query($link, $sql);
-?>
-<br /><br />
-
-<?php
-    if (!$res) {
+    // 🆕 BUILD QUERY MENGGUNAKAN WRAPPER
+    $sql = $wrapper->buildQuery();
+    
+    $result = mysqli_query($link, $sql);
+    
+    if (!$result) {
         echo "<div class='alert alert-danger'>Query error: ".htmlspecialchars(mysqli_error($link))."</div>";
-    } else {
+        exit;
+    }
+    
+    $rowCount = mysqli_num_rows($result);
+    
+    $section = $_GET['section'] ?? '';
+    $type = $_GET['type'] ?? '';
+    $status = $_GET['status'] ?? '';
+    $category = $_GET['category'] ?? '';
 ?>
-<br />
-<h1>Documents List For Section: <strong><?php echo htmlspecialchars($section);?></strong></h1>
+
+<br /><br />
+<h1>Documents List For Section: <strong><?php echo htmlspecialchars($section);?></strong>
+    <?php if (!empty($type)): ?>
+        , Type: <strong><?php echo htmlspecialchars($type); ?></strong>
+    <?php endif; ?>
+</h1>
+
+<?php if ($rowCount == 0): ?>
+    <div class='alert alert-warning' style='margin:20px;'>
+        <h4><span class='glyphicon glyphicon-search'></span> Tidak ada dokumen yang ditemukan</h4>
+        <p>Tidak ada dokumen MS & ROHS dengan filter yang Anda pilih.</p>
+    </div>
+<?php else: ?>
+
 <table class="table table-hover">
 <thead style="background:#00FFFF;">
 <tr>
     <th>No</th>
     <th>Date</th>
-    <th><a href='msrohs.php?section=<?php echo urlencode($section); ?>&by=no_doc&status=<?php echo urlencode($status); ?>&type=<?php echo urlencode($type); ?>&category=<?php echo urlencode($category)?>&submit=Show'>No. Document</a></th>
+    <th>No. Document</th>
     <th>No Rev.</th>
-    <th><a href='msrohs.php?section=<?php echo urlencode($section); ?>&by=no_drf&status=<?php echo urlencode($status); ?>&type=<?php echo urlencode($type); ?>&category=<?php echo urlencode($category)?>&submit=Show'>drf</a></th>
-    <th><a href='msrohs.php?section=<?php echo urlencode($section); ?>&by=title&status=<?php echo urlencode($status); ?>&type=<?php echo urlencode($type); ?>&category=<?php echo urlencode($category)?>&submit=Show'>Title</a></th>
+    <th>DRF</th>
+    <th>Title</th>
     <th>Process</th>
     <th>Section</th>
     <th>Action</th>
@@ -176,7 +223,7 @@ if (isset($_GET['submit'])){
 <tbody>
 <?php
 $i=1;
-while($info = mysqli_fetch_array($res)) 
+while($info = mysqli_fetch_array($result)) 
 { 
     $has_sos = !empty($info['sos_file']);
     $tempat = ($info['no_drf'] > 12967) ? $info['doc_type'] : 'document';
@@ -217,7 +264,6 @@ while($info = mysqli_fetch_array($res))
         <?php } ?>
     </td>
     
-    <!-- Kolom Sosialisasi -->
     <td>
         <?php if ($has_sos) { ?>
             <a href="lihat_sosialisasi.php?drf=<?php echo urlencode($info['no_drf']); ?>" 
@@ -241,8 +287,17 @@ $i++;
 ?>
 </tbody>
 </table>
-<?php } ?>
-<?php } ?>
+
+<?php
+    endif;
+    mysqli_free_result($result);
+} else {
+    echo "<div class='alert alert-info' style='margin-top:20px;'>";
+    echo "<h4><span class='glyphicon glyphicon-info-sign'></span> Cara Menggunakan</h4>";
+    echo "<p>Pilih <strong>Section</strong>, <strong>Type</strong>, <strong>Status</strong>, dan <strong>Category</strong>, lalu klik <strong>Show</strong>.</p>";
+    echo "</div>";
+}
+?>
 
 <!-- Modal Secure Document -->
 <div class="modal fade" id="myModal2" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">

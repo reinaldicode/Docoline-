@@ -1,6 +1,18 @@
-<?php include "wi_login.php"; ?>
+<?php
+include "wi_login.php";
+
+// 🆕 LOAD SMART WRAPPER
+require_once('legacy_wrapper.php');
+$wrapper = new LegacyFilterWrapper('WI', $link);
+
+// Ambil session state
+$state = isset($_SESSION['state']) ? $_SESSION['state'] : '';
+$nrp = isset($_SESSION['nrp']) ? $_SESSION['nrp'] : '';
+?>
+
 <br />
 
+<!-- jQuery -->
 <script type="text/javascript" src="bootstrap/js/jquery.min.js"></script>
 
 <style>
@@ -8,9 +20,63 @@
 .modal .form-control { margin-bottom:10px; }
 </style>
 
+<?php if ($wrapper->needsCascadeScript()): ?>
+<!-- CASCADE SCRIPT -->
 <script type="text/javascript">
-$(document).ready(function () {
-    // Modal Secure Document data binding
+$(document).ready(function() {
+    $('#wait_1').hide();
+    $('#wait_2').hide();
+    
+    $('#section').change(function(){
+        var section_value = $(this).val();
+        
+        if(section_value == '') {
+            $('#result_1').html('<select name="device" id="device" class="form-control"><option value="">--- Select Device ---</option></select>').show();
+            $('#result_2').html('<select name="proc" id="proc" class="form-control"><option value="">--- Select Process ---</option></select>').show();
+            return;
+        }
+        
+        $('#wait_1').show();
+        $('#result_1').hide();
+        $('#result_2').hide();
+        
+        $.ajax({
+            url: 'func.php',
+            type: 'GET',
+            data: { func: 'section', drop_var: section_value },
+            success: function(response){
+                $('#wait_1').hide();
+                $('#result_1').html(response).fadeIn();
+                $('#result_2').html('<select name="proc" id="proc" class="form-control"><option value="">--- Select Process ---</option></select>').show();
+                attachDeviceEvent();
+            }
+        });
+    });
+    
+    function attachDeviceEvent() {
+        $('#device').off('change').on('change', function(){
+            var device_value = $(this).val();
+            
+            if(device_value == '' || device_value == 'General production' || device_value == 'General PC') {
+                $('#result_2').html('<select name="proc" id="proc" class="form-control"><option value="">--- Select Process ---</option><option value="General Process">General Process</option></select>').show();
+                return;
+            }
+            
+            $('#wait_2').show();
+            $('#result_2').hide();
+            
+            $.ajax({
+                url: 'func.php',
+                type: 'GET',
+                data: { func: 'device', drop_var2: device_value },
+                success: function(response){
+                    $('#wait_2').hide();
+                    $('#result_2').html(response).fadeIn();
+                }
+            });
+        });
+    }
+    
     $(document).on('click', '.sec-file', function(e) {
         e.preventDefault();
         var drf = $(this).data('id') || '';
@@ -29,7 +95,6 @@ $(document).ready(function () {
         $('#myModal2').modal('show');
     });
 
-    // Modal Upload Sosialisasi data binding
     $(document).on('click', '.btn-upload-sos', function(e){
         e.preventDefault();
         var drf = $(this).data('drf') || '';
@@ -40,7 +105,6 @@ $(document).ready(function () {
         $('#modalSosialisasi').modal('show');
     });
 
-    // reset form saat modal ditutup
     $('#modalSosialisasi').on('hidden.bs.modal', function () {
         $(this).find('form')[0].reset();
     });
@@ -50,105 +114,75 @@ $(document).ready(function () {
     });
 });
 </script>
+<?php else: ?>
+<!-- STANDARD SCRIPT -->
+<script type="text/javascript">
+$(document).ready(function () {
+    $(document).on('click', '.sec-file', function(e) {
+        e.preventDefault();
+        var drf = $(this).data('id') || '';
+        var lama = $(this).data('lama') || '';
+        var type = $(this).data('type') || '';
+        var rev = $(this).data('rev') || '';
+        var status = $(this).data('status') || '';
+        var tipe = $(this).data('tipe') || '';
+        
+        $('#myModal2 #drf').val(drf);
+        $('#myModal2 #lama').val(lama);
+        $('#myModal2 #type').val(type);
+        $('#myModal2 #rev').val(rev);
+        $('#myModal2 #status').val(status);
+        $('#myModal2 #tipe').val(tipe);
+        $('#myModal2').modal('show');
+    });
 
-<div class="row">
-<div class="col-xs-4 well well-lg">
- <h2>Select Section</h2>
+    $(document).on('click', '.btn-upload-sos', function(e){
+        e.preventDefault();
+        var drf = $(this).data('drf') || '';
+        var nodoc = $(this).data('nodoc') || '';
+        
+        $('#modal_upload_drf').val(drf);
+        $('#modal_upload_nodoc').text(nodoc);
+        $('#modalSosialisasi').modal('show');
+    });
 
-<form action="" method="GET">
- <table>
- 	<tr>
- 	<?php 
-	$sect="select * from section order by sect_name";
-	$sql_sect=mysqli_query($link, $sect);
-	?>
- 		<td>Section</td>
- 		<td>:</td>
- 		<td>
- 			<select name="section" class="form-control">
- 				<option value="0"> --- Select Section --- </option>
- 				<?php 
-				while($data_sec = mysqli_fetch_array($sql_sect)) { 
-					$selected = (isset($_GET['section']) && $_GET['section'] == $data_sec['id_section']) ? 'selected' : '';
-				?>
-					<option value="<?php echo htmlspecialchars($data_sec['id_section']); ?>" <?php echo $selected; ?>>
-						<?php echo htmlspecialchars($data_sec['sect_name']); ?>
-					</option>
-				<?php } ?>
- 			</select>
- 		</td>
- 	</tr>
+    $('#modalSosialisasi').on('hidden.bs.modal', function () {
+        $(this).find('form')[0].reset();
+    });
+    
+    $('#myModal2').on('hidden.bs.modal', function () {
+        $(this).find('form')[0].reset();
+    });
+});
+</script>
+<?php endif; ?>
 
- 	<tr>
- 		<td>Status</td>
- 		<td>:</td>
- 		<td>
- 			<select name="status" class="form-control">
-				<option value="0"> --- All Status --- </option>
-				<option value="Secured" <?php if(isset($_GET['status']) && $_GET['status']=='Secured') echo 'selected'; ?>> Secured </option>
-				<option value="Approved" <?php if(isset($_GET['status']) && $_GET['status']=='Approved') echo 'selected'; ?>> Approved </option>
-				<option value="Review" <?php if(isset($_GET['status']) && $_GET['status']=='Review') echo 'selected'; ?>> Review </option>
-				<option value="Pending" <?php if(isset($_GET['status']) && $_GET['status']=='Pending') echo 'selected'; ?>> Pending </option>
-			</select>			
- 		</td>
- 	</tr>
- 	<tr>
- 		<td>Category</td>
- 		<td>:</td>
- 		<td>
- 			<select name="category" class="form-control">
-				<option value="0"> --- Select Category --- </option>
-				<option value="Internal" <?php if(isset($_GET['category']) && $_GET['category']=='Internal') echo 'selected'; ?>> Internal </option>
-				<option value="External" <?php if(isset($_GET['category']) && $_GET['category']=='External') echo 'selected'; ?>> External </option>
-			</select>			
- 		</td>
- 	</tr>
- 	<tr>
- 		<td></td>
- 		<td></td>
- 		<td>
-			<input type='hidden' name='by' value='no_drf'>
- 			<input type="submit" value="Show" name="submit" class="btn btn-info">
-			<a href="<?php echo $_SERVER['PHP_SELF']; ?>" class="btn btn-default" style="margin-left:10px;">Reset</a>
- 		</td>
- 	</tr>
-</form>
- </table>
- </div>
-</div>
+<h3>Work Instruction Other</h3>
+
+<?php
+// 🆕 RENDER FILTER FORM MENGGUNAKAN WRAPPER
+$wrapper->renderFilterForm();
+?>
 
 <?php
 if (isset($_GET['submit'])){
-
-    // ambil session state
-    $state = isset($_SESSION['state']) ? $_SESSION['state'] : '';
-    $nrp   = isset($_SESSION['nrp']) ? $_SESSION['nrp'] : '';
-
-    $section = isset($_GET['section']) ? mysqli_real_escape_string($link, $_GET['section']) : '0';
-    $status = isset($_GET['status']) ? mysqli_real_escape_string($link, $_GET['status']) : '0';
-    $category = isset($_GET['category']) ? mysqli_real_escape_string($link, $_GET['category']) : '0';
-    $by = isset($_GET['by']) ? mysqli_real_escape_string($link, $_GET['by']) : 'no_drf';
-
-    // Build query berdasarkan filter (LOGIC ASLI - tidak konversi)
-    if ($section == '0') {
-        echo "<div class='alert alert-warning'>Please select a section first.</div>";
-    } else {
-        // Query ASLI seperti production
-        if ($status == '0' && $category == '0') {
-            $sql = "SELECT * FROM docu WHERE section='$section' AND doc_type='WI' ORDER BY $by";
-        } elseif ($status != '0' && $category == '0') {
-            $sql = "SELECT * FROM docu WHERE section='$section' AND doc_type='WI' AND status='$status' ORDER BY $by";
-        } elseif ($status == '0' && $category != '0') {
-            $sql = "SELECT * FROM docu WHERE section='$section' AND doc_type='WI' AND category='$category' ORDER BY $by";
-        } else {
-            $sql = "SELECT * FROM docu WHERE section='$section' AND doc_type='WI' AND status='$status' AND category='$category' ORDER BY $by";
-        }
-        
-        $res = mysqli_query($link, $sql);
-        if (!$res) {
-            echo "<div class='alert alert-danger'>Query error: ". mysqli_error($link) ."</div>";
-        } else {
+    // 🆕 BUILD QUERY MENGGUNAKAN WRAPPER
+    $sql = $wrapper->buildQuery();
+    
+    $result = mysqli_query($link, $sql);
+    
+    if (!$result) {
+        echo "<div class='alert alert-danger'>Query error: ". mysqli_error($link) ."</div>";
+        exit;
+    }
+    
+    $rowCount = mysqli_num_rows($result);
+    
+    $section = isset($_GET['section']) ? $_GET['section'] : '0';
+    $status = isset($_GET['status']) ? $_GET['status'] : '0';
+    $category = isset($_GET['category']) ? $_GET['category'] : '0';
 ?>
+
 <br /><br />
 <h1>Work Instruction's List For Section: <strong><?php echo htmlspecialchars($section);?></strong>
     <?php if($status != '0'): ?>
@@ -159,30 +193,35 @@ if (isset($_GET['submit'])){
     <?php endif; ?>
 </h1>
 
+<?php if ($rowCount == 0): ?>
+    <div class='alert alert-warning' style='margin:20px;'>
+        <h4><span class='glyphicon glyphicon-search'></span> Tidak ada dokumen yang ditemukan</h4>
+        <p>Tidak ada dokumen Work Instruction dengan filter yang Anda pilih.</p>
+    </div>
+<?php else: ?>
+
 <div class="table-responsive">
 <table class="table table-hover">
 <thead style="background:#00FFFF;">
 <tr>
-	<th>No</th>
-	<th>Date</th>
-	<th><a href='wi_other.php?section=<?php echo urlencode($section); ?>&by=no_doc&status=<?php echo urlencode($status); ?>&category=<?php echo urlencode($category)?>&submit=Show'>No. Document</a></th>
-	<th>No Rev.</th>
-	<th><a href='wi_other.php?section=<?php echo urlencode($section); ?>&by=no_drf&status=<?php echo urlencode($status); ?>&category=<?php echo urlencode($category)?>&submit=Show'>drf</a></th>
-	<th><a href='wi_other.php?section=<?php echo urlencode($section); ?>&by=title&status=<?php echo urlencode($status); ?>&category=<?php echo urlencode($category)?>&submit=Show'>Title</a></th>
-	<th>Process</th>
-	<th>Section</th>
-	<th>Action</th>
-	<th>Sosialisasi</th>
+    <th>No</th>
+    <th>Date</th>
+    <th>No. Document</th>
+    <th>No Rev.</th>
+    <th>DRF</th>
+    <th>Title</th>
+    <th>Process</th>
+    <th>Section</th>
+    <th>Action</th>
+    <th>Sosialisasi</th>
 </tr>
 </thead>
 <tbody>
 <?php
 $i=1;
-while($info = mysqli_fetch_assoc($res)) { 
-    // periksa apakah ada bukti sosialisasi
+while($info = mysqli_fetch_assoc($result)) { 
     $has_sos = !empty($info['sos_file']);
     
-    // tentukan folder tempat file
     if ($info['no_drf'] > 12800) {
         $tempat = $info['doc_type'];
     } else {
@@ -190,103 +229,98 @@ while($info = mysqli_fetch_assoc($res)) {
     }
 ?>
 <tr>
-	<td><?php echo $i; ?></td>
-	<td><?php echo htmlspecialchars($info['tgl_upload']);?></td>
-	<td><?php echo htmlspecialchars($info['no_doc']);?></td>
-	<td><?php echo htmlspecialchars($info['no_rev']);?></td>
-	<td><?php echo htmlspecialchars($info['no_drf']);?></td>
-	<td>
-		<a href="<?php echo htmlspecialchars($tempat . '/' . $info['file']); ?>">
-			<?php echo htmlspecialchars($info['title']);?>
-		</a>
-	</td>
-	<td><?php echo htmlspecialchars($info['process']);?></td>
-	<td><?php echo htmlspecialchars($info['section']);?></td>
-	
-	<!-- Action -->
-	<td style="white-space:nowrap;">
-		<!-- Tombol yang bisa diakses semua user -->
-		<a href="detail.php?drf=<?php echo urlencode($info['no_drf']);?>&no_doc=<?php echo urlencode($info['no_doc']);?>" 
-		   class="btn btn-xs btn-info" title="lihat detail">
-			<span class="glyphicon glyphicon-search"></span>
-		</a>
-		
-		<a href="lihat_approver.php?drf=<?php echo urlencode($info['no_drf']);?>" 
-		   class="btn btn-xs btn-info" title="lihat approver">
-			<span class="glyphicon glyphicon-user"></span>
-		</a>
-		
-		<a href="radf.php?drf=<?php echo urlencode($info['no_drf']);?>&section=<?php echo urlencode($info['section']);?>" 
-		   class="btn btn-xs btn-info" title="lihat RADF">
-			<span class="glyphicon glyphicon-eye-open"></span>
-		</a>
+    <td><?php echo $i; ?></td>
+    <td><?php echo htmlspecialchars($info['tgl_upload']);?></td>
+    <td><?php echo htmlspecialchars($info['no_doc']);?></td>
+    <td><?php echo htmlspecialchars($info['no_rev']);?></td>
+    <td><?php echo htmlspecialchars($info['no_drf']);?></td>
+    <td>
+        <a href="<?php echo htmlspecialchars($tempat . '/' . $info['file']); ?>" target="_blank">
+            <?php echo htmlspecialchars($info['title']);?>
+        </a>
+    </td>
+    <td><?php echo htmlspecialchars($info['process']);?></td>
+    <td><?php echo htmlspecialchars($info['section']);?></td>
+    
+    <td style="white-space:nowrap;">
+        <a href="detail.php?drf=<?php echo urlencode($info['no_drf']);?>&no_doc=<?php echo urlencode($info['no_doc']);?>" 
+           class="btn btn-xs btn-info" title="lihat detail">
+            <span class="glyphicon glyphicon-search"></span>
+        </a>
+        
+        <a href="lihat_approver.php?drf=<?php echo urlencode($info['no_drf']);?>" 
+           class="btn btn-xs btn-info" title="lihat approver">
+            <span class="glyphicon glyphicon-user"></span>
+        </a>
+        
+        <a href="radf.php?drf=<?php echo urlencode($info['no_drf']);?>&section=<?php echo urlencode($info['section']);?>" 
+           class="btn btn-xs btn-info" title="lihat RADF">
+            <span class="glyphicon glyphicon-eye-open"></span>
+        </a>
 
-		<?php
-		// Tombol khusus Admin atau Originator
-		if ($state == 'Admin' || $state == 'Originator') {
-		?>
-			<a href="edit_doc.php?drf=<?php echo urlencode($info['no_drf']);?>" 
-			   class="btn btn-xs btn-primary" title="Edit Doc">
-				<span class="glyphicon glyphicon-pencil"></span>
-			</a>
-			
-			<a href="del_doc.php?drf=<?php echo urlencode($info['no_drf']);?>" 
-			   class="btn btn-xs btn-danger" 
-			   onClick="return confirm('Delete document <?php echo addslashes($info['no_doc']); ?>?')" 
-			   title="Delete Doc">
-				<span class="glyphicon glyphicon-remove"></span>
-			</a>
+        <?php if ($state == 'Admin' || $state == 'Originator') { ?>
+            <a href="edit_doc.php?drf=<?php echo urlencode($info['no_drf']);?>" 
+               class="btn btn-xs btn-primary" title="Edit Doc">
+                <span class="glyphicon glyphicon-pencil"></span>
+            </a>
+            
+            <a href="del_doc.php?drf=<?php echo urlencode($info['no_drf']);?>" 
+               class="btn btn-xs btn-danger" 
+               onClick="return confirm('Delete document <?php echo addslashes($info['no_doc']); ?>?')" 
+               title="Delete Doc">
+                <span class="glyphicon glyphicon-remove"></span>
+            </a>
 
-			<!-- Tombol Secure untuk SEMUA status -->
-			<a data-toggle="modal" data-target="#myModal2"
-				data-id="<?php echo htmlspecialchars($info['no_drf']); ?>"
-				data-lama="<?php echo htmlspecialchars($info['file']); ?>"
-				data-type="<?php echo htmlspecialchars($info['doc_type']); ?>"
-				data-rev="<?php echo htmlspecialchars($info['no_rev']); ?>"
-				data-status="<?php echo htmlspecialchars($info['status']); ?>"
-				data-tipe="<?php echo htmlspecialchars($info['category']); ?>"
-				class="btn btn-xs btn-success sec-file" 
-				title="Secure Document">
-				<span class="glyphicon glyphicon-play"></span>
-			</a>
-		<?php 
-		} // end if Admin or Originator
-		?>
-	</td>
-	
-	<!-- Kolom Sosialisasi -->
-	<td>
-		<?php if ($has_sos) { ?>
-			<a href="lihat_sosialisasi.php?drf=<?php echo urlencode($info['no_drf']);?>" 
-			   class="btn btn-xs btn-primary" title="Lihat Bukti Sosialisasi">
-				Lihat
-				<span class="glyphicon glyphicon-file"></span>
-			</a>
-		<?php } else { ?>
-			<a href="#" 
-			   class="btn btn-xs btn-success btn-upload-sos"
-			   data-drf="<?php echo htmlspecialchars($info['no_drf']); ?>"
-			   data-nodoc="<?php echo htmlspecialchars($info['no_doc']); ?>"
-			   title="Upload Bukti Sosialisasi">
-				Upload
-				<span class="glyphicon glyphicon-upload"></span>
-			</a>
-		<?php } ?>
-	</td>
+            <a data-toggle="modal" data-target="#myModal2"
+                data-id="<?php echo htmlspecialchars($info['no_drf']); ?>"
+                data-lama="<?php echo htmlspecialchars($info['file']); ?>"
+                data-type="<?php echo htmlspecialchars($info['doc_type']); ?>"
+                data-rev="<?php echo htmlspecialchars($info['no_rev']); ?>"
+                data-status="<?php echo htmlspecialchars($info['status']); ?>"
+                data-tipe="<?php echo htmlspecialchars($info['category']); ?>"
+                class="btn btn-xs btn-success sec-file" 
+                title="Secure Document">
+                <span class="glyphicon glyphicon-play"></span>
+            </a>
+        <?php } ?>
+    </td>
+    
+    <td>
+        <?php if ($has_sos) { ?>
+            <a href="lihat_sosialisasi.php?drf=<?php echo urlencode($info['no_drf']);?>" 
+               class="btn btn-xs btn-primary" title="Lihat Bukti Sosialisasi">
+                Lihat
+                <span class="glyphicon glyphicon-file"></span>
+            </a>
+        <?php } else { ?>
+            <a href="#" 
+               class="btn btn-xs btn-success btn-upload-sos"
+               data-drf="<?php echo htmlspecialchars($info['no_drf']); ?>"
+               data-nodoc="<?php echo htmlspecialchars($info['no_doc']); ?>"
+               title="Upload Bukti Sosialisasi">
+                Upload
+                <span class="glyphicon glyphicon-upload"></span>
+            </a>
+        <?php } ?>
+    </td>
 </tr>
 <?php 
-	$i++;
-} // end while
+    $i++;
+}
 ?>
 </tbody>
 </table>
 </div>
 
 <?php
-        mysqli_free_result($res);
-        } // end else query ok
-    } // end else section selected
-} // end if submit
+    endif;
+    mysqli_free_result($result);
+} else {
+    echo "<div class='alert alert-info' style='margin-top:20px;'>";
+    echo "<h4><span class='glyphicon glyphicon-info-sign'></span> Cara Menggunakan</h4>";
+    echo "<p>Pilih <strong>Section</strong>, <strong>Status</strong>, dan <strong>Category</strong> (opsional), lalu klik <strong>Show</strong>.</p>";
+    echo "</div>";
+}
 ?> 
 
 <!-- Modal Secure Document -->
@@ -299,20 +333,20 @@ while($info = mysqli_fetch_assoc($res)) {
             </div>
             <div class="modal-body">
                 <form name="secure_doc" method="POST" action="process.php" enctype="multipart/form-data">
-					<input type="hidden" name="drf" id="drf" class="form-control" value=""/>
-					<input type="hidden" name="lama" id="lama" class="form-control" value=""/>
-					<input type="hidden" name="rev" id="rev" class="form-control" value=""/>
-					<input type="hidden" name="type" id="type" class="form-control" value=""/>
-					<input type="hidden" name="status" id="status" class="form-control" value=""/>
-					<input type="hidden" name="tipe" id="tipe" class="form-control" value=""/>
-					<div class="form-group">
-						<label>Upload New Secured File:</label>
-						<input type="file" name="baru" class="form-control" required>
-					</div>
-					<div class="modal-footer">
-						<button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
-						<button type="submit" name="upload" value="Update" class="btn btn-primary" onclick="return confirm('Are you sure you want to secure this document?');">Update</button>
-					</div>
+                    <input type="hidden" name="drf" id="drf" class="form-control" value=""/>
+                    <input type="hidden" name="lama" id="lama" class="form-control" value=""/>
+                    <input type="hidden" name="rev" id="rev" class="form-control" value=""/>
+                    <input type="hidden" name="type" id="type" class="form-control" value=""/>
+                    <input type="hidden" name="status" id="status" class="form-control" value=""/>
+                    <input type="hidden" name="tipe" id="tipe" class="form-control" value=""/>
+                    <div class="form-group">
+                        <label>Upload New Secured File:</label>
+                        <input type="file" name="baru" class="form-control" required>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                        <button type="submit" name="upload" value="Update" class="btn btn-primary" onclick="return confirm('Are you sure you want to secure this document?');">Update</button>
+                    </div>
                 </form>
             </div>
         </div>
@@ -332,7 +366,6 @@ while($info = mysqli_fetch_assoc($res)) {
             <p>Upload bukti sosialisasi untuk No. Document: <strong id="modal_upload_nodoc"></strong></p>
             <input type="hidden" name="drf" id="modal_upload_drf" value="">
             <?php
-            // token CSRF sederhana
             if (empty($_SESSION['csrf_token'])) {
                 if (function_exists('random_bytes')) {
                     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
@@ -360,5 +393,4 @@ while($info = mysqli_fetch_assoc($res)) {
   </div>
 </div>
 
-<!-- bootstrap.js -->
 <script src="bootstrap/js/bootstrap.min.js"></script>

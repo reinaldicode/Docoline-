@@ -5,13 +5,13 @@
         "has_submenu": false,
         "submenu": [],
         "filter_config": {
-            "section": true,
+            "section_dept": true,
+            "section_prod": false,
             "device": false,
             "process": false,
             "status": true,
             "category": false
-        },
-        "legacy_file": "procedure_login.php"
+        }
     },
     {
         "id": "wi",
@@ -22,36 +22,39 @@
                 "id": "wi_production",
                 "name": "WI Production",
                 "filter_config": {
-                    "section": true,
-                    "device": true,
-                    "process": true,
+                    "section_dept": true,
+                    "section_prod": true,
                     "status": true,
-                    "category": true
+                    "category": true,
+                    "device": true,
+                    "process": true
                 },
-                "legacy_file": "wi_prod.php",
                 "_note": "Shows documents with device != '-' (production devices)"
             },
             {
                 "id": "wi_other",
                 "name": "WI Other",
                 "filter_config": {
-                    "section": true,
-                    "device": false,
-                    "process": false,
+                    "section_dept": true,
+                    "section_prod": false,
                     "status": true,
-                    "category": false
+                    "category": true,
+                    "device": false,
+                    "process": false
                 },
-                "legacy_file": "wi_other.php",
                 "_note": "Shows documents with device = '-' or empty (non-production)"
             }
         ],
         "filter_config": {
-            "section": true,
-            "device": false,
-            "process": false,
+            "section_dept": true,
+            "section_prod": false,
             "status": true,
-            "category": false
-        }
+            "category": true,
+            "device": false,
+            "process": false
+        },
+        "use_custom_file": false,
+        "custom_file": ""
     },
     {
         "id": "form",
@@ -62,31 +65,32 @@
                 "id": "form_production",
                 "name": "Form Production",
                 "filter_config": {
-                    "section": true,
-                    "device": false,
-                    "process": false,
+                    "section_dept": false,
+                    "section_prod": true,
                     "status": true,
-                    "category": false
+                    "category": true,
+                    "device": true,
+                    "process": true
                 },
-                "legacy_file": "form_prod.php",
                 "_note": "Shows documents with device != '-' (production devices)"
             },
             {
                 "id": "form_other",
                 "name": "Form Other",
                 "filter_config": {
-                    "section": true,
+                    "section_dept": true,
+                    "section_prod": false,
                     "device": false,
                     "process": false,
                     "status": true,
                     "category": false
                 },
-                "legacy_file": "form_other.php",
                 "_note": "Shows documents with device = '-' or empty (non-production)"
             }
         ],
         "filter_config": {
-            "section": true,
+            "section_dept": true,
+            "section_prod": false,
             "device": false,
             "process": false,
             "status": true,
@@ -99,13 +103,14 @@
         "has_submenu": false,
         "submenu": [],
         "filter_config": {
-            "section": true,
+            "type": true,
+            "section_dept": true,
+            "section_prod": false,
             "device": false,
             "process": false,
             "status": true,
             "category": false
-        },
-        "legacy_file": "MSROHS.php"
+        }
     },
     {
         "id": "sample",
@@ -113,13 +118,13 @@
         "has_submenu": false,
         "submenu": [],
         "filter_config": {
-            "section": true,
+            "section_dept": true,
+            "section_prod": false,
             "device": false,
             "process": false,
             "status": true,
             "category": false
-        },
-        "legacy_file": "monitor_login.php"
+        }
     },
     {
         "id": "msds",
@@ -127,13 +132,13 @@
         "has_submenu": false,
         "submenu": [],
         "filter_config": {
-            "section": true,
+            "section_dept": true,
+            "section_prod": false,
             "device": false,
             "process": false,
             "status": true,
             "category": false
-        },
-        "legacy_file": "msds_login.php"
+        }
     },
     {
         "id": "manual",
@@ -141,13 +146,13 @@
         "has_submenu": false,
         "submenu": [],
         "filter_config": {
-            "section": true,
+            "section_dept": true,
+            "section_prod": false,
             "device": false,
             "process": false,
             "status": true,
             "category": false
-        },
-        "legacy_file": "manual.php"
+        }
     },
     {
         "id": "obsolate",
@@ -155,64 +160,51 @@
         "has_submenu": false,
         "submenu": [],
         "filter_config": {
-            "section": true,
+            "type": true,
+            "section_dept": true,
+            "section_prod": false,
             "device": false,
             "process": false,
-            "status": true,
-            "category": false
-        },
-        "legacy_file": "obs_login.php"
+            "status": false,
+            "category": true
+        }
     },
     {
-        "id": "hss",
-        "name": "HSS",
+        "id": "sato",
+        "name": "SATO",
         "has_submenu": true,
         "submenu": [
             {
-                "id": "hss_prod",
-                "name": "Hss prod",
+                "id": "sato_prod",
+                "name": "SATO prod",
                 "filter_config": {
-                    "section": true,
-                    "device": false,
-                    "process": false,
-                    "status": true,
-                    "category": true
+                    "section_dept": false,
+                    "section_prod": true,
+                    "status": false,
+                    "category": false,
+                    "device": true,
+                    "process": true
                 }
             },
             {
-                "id": "hss_other",
-                "name": "Hss other",
-                "use_custom_file": false,
-                "custom_file": "",
+                "id": "sato_other",
+                "name": "SATO other",
                 "filter_config": {
-                    "section": true,
-                    "device": true,
-                    "process": true,
+                    "section_dept": true,
+                    "section_prod": false,
                     "status": true,
-                    "category": false
-                },
-                "is_legacy": false
+                    "category": true,
+                    "device": false,
+                    "process": false
+                }
             }
         ],
         "filter_config": {
-            "section": true,
-            "device": true,
-            "process": false,
+            "section_dept": false,
+            "section_prod": true,
             "status": true,
-            "category": false
-        },
-        "use_custom_file": false,
-        "custom_file": ""
-    },
-    {
-        "id": "test",
-        "name": "test",
-        "has_submenu": false,
-        "submenu": [],
-        "filter_config": {
-            "section": true,
-            "status": false,
-            "category": false,
+            "category": true,
+            "device": true,
             "process": true
         },
         "use_custom_file": false,
