@@ -190,6 +190,21 @@
         "custom_file": ""
     },
     {
+        "id": "per",
+        "name": "PER",
+        "has_submenu": false,
+        "submenu": [],
+        "filter_config": {
+            "section_dept": false,
+            "section_prod": false,
+            "status": false,
+            "category": false,
+            "device": false,
+            "process": false,
+            "type": false
+        }
+    },
+    {
         "id": "sato",
         "name": "SATO",
         "has_submenu": true,
@@ -222,7 +237,7 @@
             }
         ],
         "filter_config": {
-            "section_dept": false,
+            "section_dept": true,
             "section_prod": true,
             "status": true,
             "category": true,
