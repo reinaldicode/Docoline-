@@ -1,5 +1,6 @@
 <?php
 // ===== PROSES POST DULU =====
+// ini add_document.php - FIXED VERSION
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit'])) {
     $jsonFile = __DIR__ . '/data/document_types.json';
     $types = json_decode(file_get_contents($jsonFile), true);
@@ -14,8 +15,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit'])) {
     // Ambil filter config dari checkbox yang di-submit
     $filterConfig = [];
     
-    // Updated filter keys - SUPPORT 2 SECTION TYPES
-    $availableFilterKeys = ['section_dept', 'section_prod', 'status', 'category', 'device', 'process'];
+    // ✅ FIXED: Ambil semua filter keys dari filter_options.json
+    $filterOptionsFile = __DIR__ . '/data/filter_options.json';
+    $availableFilters = json_decode(file_get_contents($filterOptionsFile), true);
+    $availableFilterKeys = array_keys($availableFilters);
     
     foreach ($availableFilterKeys as $key) {
         $filterConfig[$key] = isset($_POST['filter_' . $key]) ? true : false;
@@ -73,33 +76,8 @@ $availableFilters = [];
 if (file_exists($filterOptionsFile)) {
     $availableFilters = json_decode(file_get_contents($filterOptionsFile), true);
 } else {
-    // Fallback jika file tidak ada
-    $availableFilters = [
-        'section_dept' => [
-            'label' => 'Section (Department)',
-            'description' => 'Filter by department/administrative section'
-        ],
-        'section_prod' => [
-            'label' => 'Section (Production)',
-            'description' => 'Filter by production section/line'
-        ],
-        'status' => [
-            'label' => 'Status',
-            'description' => 'Document approval status'
-        ],
-        'category' => [
-            'label' => 'Category',
-            'description' => 'Internal or External document'
-        ],
-        'device' => [
-            'label' => 'Device',
-            'description' => 'Production device/equipment'
-        ],
-        'process' => [
-            'label' => 'Process',
-            'description' => 'Manufacturing process stage'
-        ]
-    ];
+    echo "<div class='alert alert-danger'>Error: filter_options.json not found!</div>";
+    exit;
 }
 
 // Pesan error
@@ -183,6 +161,9 @@ if (isset($_GET['error'])) {
                         // Get label dan description
                         $filterLabel = isset($filter['label']) ? $filter['label'] : ucfirst(str_replace('_', ' ', $key));
                         $filterDesc = isset($filter['description']) ? $filter['description'] : '';
+                        
+                        // Check if dynamic
+                        $isDynamic = isset($filter['dynamic']) && $filter['dynamic'] === true;
                     ?>
                         <div class="checkbox" style="margin-bottom: 15px;">
                             <label>
@@ -190,10 +171,16 @@ if (isset($_GET['error'])) {
                                        class="filter-checkbox" data-key="<?php echo $key; ?>"
                                        <?php echo $defaultChecked; ?>>
                                 <strong><?php echo htmlspecialchars($filterLabel); ?></strong>
+                                <?php if ($isDynamic): ?>
+                                <span class="label label-success">Dynamic</span>
+                                <?php endif; ?>
                             </label>
                             <br>
                             <small class="text-muted" style="margin-left: 20px;">
                                 <?php echo htmlspecialchars($filterDesc); ?>
+                                <?php if ($isDynamic && isset($filter['options_by_doctype'])): ?>
+                                <br><em>Options berbeda untuk setiap document type</em>
+                                <?php endif; ?>
                             </small>
                         </div>
                     <?php 
@@ -206,10 +193,11 @@ if (isset($_GET['error'])) {
 
             <div class="alert alert-warning">
                 <span class="glyphicon glyphicon-info-sign"></span>
-                <strong>Perbedaan Section:</strong>
+                <strong>Catatan Penting:</strong>
                 <ul style="margin: 5px 0 0 0;">
                     <li><strong>Section (Department)</strong> - Untuk dokumen departemen/administratif (QC, Engineering, dll)</li>
                     <li><strong>Section (Production)</strong> - Untuk dokumen production line (Line 1, Line 2, dll)</li>
+                    <li><strong>Type</strong> - Filter dinamis yang options-nya berbeda tergantung document type</li>
                 </ul>
             </div>
 

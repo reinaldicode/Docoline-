@@ -10,7 +10,8 @@
             "device": false,
             "process": false,
             "status": true,
-            "category": false
+            "category": false,
+            "type": false
         }
     },
     {
@@ -22,12 +23,13 @@
                 "id": "wi_production",
                 "name": "WI Production",
                 "filter_config": {
-                    "section_dept": true,
+                    "section_dept": false,
                     "section_prod": true,
                     "status": true,
                     "category": true,
                     "device": true,
-                    "process": true
+                    "process": true,
+                    "type": false
                 },
                 "_note": "Shows documents with device != '-' (production devices)"
             },
@@ -40,7 +42,8 @@
                     "status": true,
                     "category": true,
                     "device": false,
-                    "process": false
+                    "process": false,
+                    "type": false
                 },
                 "_note": "Shows documents with device = '-' or empty (non-production)"
             }
@@ -51,7 +54,8 @@
             "status": true,
             "category": true,
             "device": false,
-            "process": false
+            "process": false,
+            "type": false
         },
         "use_custom_file": false,
         "custom_file": ""
@@ -70,7 +74,8 @@
                     "status": true,
                     "category": true,
                     "device": true,
-                    "process": true
+                    "process": true,
+                    "type": false
                 },
                 "_note": "Shows documents with device != '-' (production devices)"
             },
@@ -80,10 +85,11 @@
                 "filter_config": {
                     "section_dept": true,
                     "section_prod": false,
+                    "status": true,
+                    "category": true,
                     "device": false,
                     "process": false,
-                    "status": true,
-                    "category": false
+                    "type": false
                 },
                 "_note": "Shows documents with device = '-' or empty (non-production)"
             }
@@ -94,23 +100,26 @@
             "device": false,
             "process": false,
             "status": true,
-            "category": false
+            "category": false,
+            "type": false
         }
     },
     {
-        "id": "msrohs",
+        "id": "ms_&_rohs",
         "name": "MS & ROHS",
         "has_submenu": false,
         "submenu": [],
         "filter_config": {
-            "type": true,
             "section_dept": true,
             "section_prod": false,
+            "status": true,
+            "category": true,
             "device": false,
             "process": false,
-            "status": true,
-            "category": false
-        }
+            "type": true
+        },
+        "use_custom_file": false,
+        "custom_file": ""
     },
     {
         "id": "sample",
@@ -118,13 +127,16 @@
         "has_submenu": false,
         "submenu": [],
         "filter_config": {
-            "section_dept": true,
-            "section_prod": false,
-            "device": false,
-            "process": false,
+            "section_dept": false,
+            "section_prod": true,
             "status": true,
-            "category": false
-        }
+            "category": true,
+            "device": true,
+            "process": true,
+            "type": false
+        },
+        "use_custom_file": false,
+        "custom_file": ""
     },
     {
         "id": "msds",
@@ -132,13 +144,16 @@
         "has_submenu": false,
         "submenu": [],
         "filter_config": {
-            "section_dept": true,
-            "section_prod": false,
-            "device": false,
-            "process": false,
+            "section_dept": false,
+            "section_prod": true,
             "status": true,
-            "category": false
-        }
+            "category": true,
+            "device": true,
+            "process": true,
+            "type": false
+        },
+        "use_custom_file": false,
+        "custom_file": ""
     },
     {
         "id": "manual",
@@ -146,13 +161,16 @@
         "has_submenu": false,
         "submenu": [],
         "filter_config": {
-            "section_dept": true,
+            "section_dept": false,
             "section_prod": false,
+            "status": false,
+            "category": false,
             "device": false,
             "process": false,
-            "status": true,
-            "category": false
-        }
+            "type": false
+        },
+        "use_custom_file": false,
+        "custom_file": ""
     },
     {
         "id": "obsolate",
@@ -160,14 +178,16 @@
         "has_submenu": false,
         "submenu": [],
         "filter_config": {
-            "type": true,
             "section_dept": true,
             "section_prod": false,
+            "status": false,
+            "category": true,
             "device": false,
             "process": false,
-            "status": false,
-            "category": true
-        }
+            "type": true
+        },
+        "use_custom_file": false,
+        "custom_file": ""
     },
     {
         "id": "sato",
@@ -183,7 +203,8 @@
                     "status": false,
                     "category": false,
                     "device": true,
-                    "process": true
+                    "process": true,
+                    "type": false
                 }
             },
             {
@@ -195,7 +216,8 @@
                     "status": true,
                     "category": true,
                     "device": false,
-                    "process": false
+                    "process": false,
+                    "type": false
                 }
             }
         ],
@@ -205,7 +227,25 @@
             "status": true,
             "category": true,
             "device": true,
-            "process": true
+            "process": true,
+            "type": false
+        },
+        "use_custom_file": false,
+        "custom_file": ""
+    },
+    {
+        "id": "pe",
+        "name": "PE",
+        "has_submenu": false,
+        "submenu": [],
+        "filter_config": {
+            "section_dept": true,
+            "section_prod": false,
+            "status": true,
+            "category": true,
+            "device": false,
+            "process": false,
+            "type": false
         },
         "use_custom_file": false,
         "custom_file": ""

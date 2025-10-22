@@ -26,20 +26,6 @@
             "SHE"
         ]
     },
-    "section_prod": {
-        "label": "Section (Production)",
-        "description": "Filter by production section/line",
-        "options": [
-            "Line 1",
-            "Line 2",
-            "Line 3",
-            "Line 4",
-            "Line 5",
-            "QC Line",
-            "Packing Line",
-            "General Production"
-        ]
-    },
     "status": {
         "label": "Status",
         "description": "Document approval status",
@@ -58,40 +44,9 @@
             "External"
         ]
     },
-    "device": {
-        "label": "Device",
-        "description": "Production device/equipment",
-        "options": [
-            "ASM AD830",
-            "ASM AD838",
-            "ASM AD839",
-            "KAIJO FB830",
-            "KAIJO FB840",
-            "TOWA YPS",
-            "TOWA YPL",
-            "Advantest T5503",
-            "Advantest T5505",
-            "General Equipment",
-            "-"
-        ]
-    },
-    "process": {
-        "label": "Process",
-        "description": "Manufacturing process stage",
-        "options": [
-            "All Process",
-            "Die Bonding",
-            "Wire Bonding",
-            "Transfer Molding",
-            "Electrical Testing",
-            "Visual Inspection",
-            "Packing",
-            "General"
-        ]
-    },
     "type": {
         "label": "Type",
-        "description": "Document type",
+        "description": "Document type classification",
         "options": [],
         "dynamic": true,
         "options_by_doctype": {
