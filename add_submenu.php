@@ -1,5 +1,6 @@
 <?php
 // ===== PROSES POST DULU SEBELUM ADA OUTPUT APAPUN =====
+// ini add_submenu.php - FIXED VERSION
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit'])) {
     $jsonFile = __DIR__ . '/data/document_types.json';
     $types = json_decode(file_get_contents($jsonFile), true);
@@ -10,7 +11,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit'])) {
     // Ambil filter config dari checkbox yang di-submit
     $filterConfig = [];
     
-    $availableFilterKeys = ['section_dept', 'section_prod', 'status', 'category', 'device', 'process'];
+    // ✅ FIXED: Ambil semua filter keys dari filter_options.json
+    $filterOptionsFile = __DIR__ . '/data/filter_options.json';
+    $availableFilters = json_decode(file_get_contents($filterOptionsFile), true);
+    $availableFilterKeys = array_keys($availableFilters);
     
     foreach ($availableFilterKeys as $key) {
         $filterConfig[$key] = isset($_POST['filter_' . $key]) ? true : false;
@@ -64,33 +68,8 @@ $availableFilters = [];
 if (file_exists($filterOptionsFile)) {
     $availableFilters = json_decode(file_get_contents($filterOptionsFile), true);
 } else {
-    // Fallback
-    $availableFilters = [
-        'section_dept' => [
-            'label' => 'Section (Department)',
-            'description' => 'Filter by department/administrative section'
-        ],
-        'section_prod' => [
-            'label' => 'Section (Production)',
-            'description' => 'Filter by production section/line'
-        ],
-        'status' => [
-            'label' => 'Status',
-            'description' => 'Document approval status'
-        ],
-        'category' => [
-            'label' => 'Category',
-            'description' => 'Internal or External document'
-        ],
-        'device' => [
-            'label' => 'Device',
-            'description' => 'Production device/equipment'
-        ],
-        'process' => [
-            'label' => 'Process',
-            'description' => 'Manufacturing process stage'
-        ]
-    ];
+    echo "<div class='alert alert-danger'>Error: filter_options.json not found!</div>";
+    exit;
 }
 
 // Validasi index
@@ -122,6 +101,14 @@ if (isset($_GET['error'])) {
 
 // Get parent filter config untuk default values
 $parentFilterConfig = isset($current['filter_config']) ? $current['filter_config'] : [];
+
+// ✅ NEW: Check if parent document type has dynamic type options
+$hasDynamicTypeOptions = false;
+$dynamicTypeOptions = [];
+if (isset($availableFilters['type']['options_by_doctype'][$current['name']])) {
+    $hasDynamicTypeOptions = true;
+    $dynamicTypeOptions = $availableFilters['type']['options_by_doctype'][$current['name']];
+}
 ?>
 
 <br /><br />
@@ -180,6 +167,9 @@ $parentFilterConfig = isset($current['filter_config']) ? $current['filter_config
                  
                  $filterLabel = isset($filter['label']) ? $filter['label'] : ucfirst(str_replace('_', ' ', $key));
                  $filterDesc = isset($filter['description']) ? $filter['description'] : '';
+                 
+                 // ✅ Check if this is dynamic type filter
+                 $isDynamicType = ($key === 'type' && $hasDynamicTypeOptions);
              ?>
                  <div class="checkbox" style="margin-bottom: 15px;">
                      <label>
@@ -187,10 +177,16 @@ $parentFilterConfig = isset($current['filter_config']) ? $current['filter_config
                                 class="filter-checkbox" data-key="<?php echo $key; ?>"
                                 <?php echo $isCheckedParent ? 'checked' : ''; ?>>
                          <strong><?php echo htmlspecialchars($filterLabel); ?></strong>
+                         <?php if ($isDynamicType): ?>
+                         <span class="label label-success">Dynamic</span>
+                         <?php endif; ?>
                      </label>
                      <br>
                      <small class="text-muted" style="margin-left: 20px;">
                          <?php echo htmlspecialchars($filterDesc); ?>
+                         <?php if ($isDynamicType): ?>
+                         <br><strong>Options untuk <?php echo htmlspecialchars($current['name']); ?>:</strong> <?php echo implode(', ', $dynamicTypeOptions); ?>
+                         <?php endif; ?>
                      </small>
                  </div>
              <?php 
@@ -207,6 +203,9 @@ $parentFilterConfig = isset($current['filter_config']) ? $current['filter_config
          <ul style="margin: 5px 0 0 0;">
              <li>Untuk submenu <strong>Production</strong> → Gunakan filter: Section (Production), Device, Process</li>
              <li>Untuk submenu <strong>Other/General</strong> → Gunakan filter: Section (Department), Status, Category</li>
+             <?php if ($hasDynamicTypeOptions): ?>
+             <li>Filter <strong>Type</strong> tersedia dengan options: <?php echo implode(', ', $dynamicTypeOptions); ?></li>
+             <?php endif; ?>
          </ul>
      </div>
 
