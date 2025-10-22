@@ -18,6 +18,7 @@ $filterOptionsFile = __DIR__ . '/data/filter_options.json';
 $docTypes = [];
 $filterConfig = [];
 $globalFilters = [];
+$currentDocType = null;
 
 // ===== AUTO-DETECT AVAILABLE DATABASE COLUMNS =====
 $availableDbColumns = [];
@@ -39,6 +40,8 @@ if (file_exists($jsonFile)) {
     // Cari document type yang sesuai
     foreach ($docTypes as $dt) {
         if (strcasecmp($dt['name'], $type) === 0) {
+            $currentDocType = $dt;
+            
             // Jika ada subtype, cari config di submenu
             if (!empty($subtype) && !empty($dt['submenu'])) {
                 foreach ($dt['submenu'] as $sub) {
@@ -68,14 +71,8 @@ if (empty($filterConfig)) {
 foreach ($filterConfig as $filterKey => $isEnabled) {
     if (!$isEnabled) continue;
     
-    // ✅ SKIP section_prod karena pakai cascade dropdown (bukan kolom di docu)
-    if ($filterKey === 'section_prod') continue;
-    
-    // ✅ SKIP device karena bisa pakai cascade atau static dropdown
-    if ($filterKey === 'device') continue;
-    
-    // ✅ SKIP process karena bisa pakai cascade atau static dropdown
-    if ($filterKey === 'process') continue;
+    // SKIP filters yang tidak butuh kolom database
+    if (in_array($filterKey, ['section_prod', 'device', 'process', 'type'])) continue;
     
     $dbColumn = getDbColumn($filterKey);
     
@@ -86,12 +83,21 @@ foreach ($filterConfig as $filterKey => $isEnabled) {
 }
 
 // Function untuk get filter label dan options
-function getFilterData($filterKey, $globalFilters) {
+function getFilterData($filterKey, $globalFilters, $docTypeName = '') {
     if (isset($globalFilters[$filterKey])) {
-        return [
+        $filterData = [
             'label' => $globalFilters[$filterKey]['label'],
             'options' => $globalFilters[$filterKey]['options']
         ];
+        
+        // ✅ Special handling untuk type filter (dynamic)
+        if ($filterKey === 'type' && !empty($docTypeName)) {
+            if (isset($globalFilters['type']['options_by_doctype'][$docTypeName])) {
+                $filterData['options'] = $globalFilters['type']['options_by_doctype'][$docTypeName];
+            }
+        }
+        
+        return $filterData;
     }
     
     // Fallback default
@@ -110,7 +116,8 @@ function getParamName($filterKey) {
         'process' => 'proc',
         'category' => 'cat',
         'device' => 'device',
-        'status' => 'status'
+        'status' => 'status',
+        'type' => 'doctype'  // ✅ Parameter untuk type filter
     ];
     
     return isset($mapping[$filterKey]) ? $mapping[$filterKey] : $filterKey;
@@ -122,6 +129,9 @@ function getDbColumn($filterKey) {
     if ($filterKey === 'section_prod') return 'section_prod'; // Tidak ada di DB, pakai JOIN
     if ($filterKey === 'process') return 'process';
     if ($filterKey === 'category') return 'category';
+    if ($filterKey === 'type') return 'doc_type'; // ✅ Kolom database untuk type
+    if ($filterKey === 'device') return 'device';
+    if ($filterKey === 'status') return 'status';
     return $filterKey;
 }
 
@@ -156,8 +166,6 @@ $(document).ready(function() {
     $('#section').change(function(){
         var section_value = $(this).val();
         
-        console.log('Section selected:', section_value); // Debug
-        
         if(section_value == '') {
             $('#result_1').html('<select name="device" id="device" class="form-control"><option value="">--- Select Device ---</option></select>').show();
             $('#result_2').html('<select name="proc" id="proc" class="form-control"><option value="">--- Select Process ---</option></select>').show();
@@ -176,13 +184,9 @@ $(document).ready(function() {
                 drop_var: section_value 
             },
             success: function(response){
-                console.log('Device response:', response); // Debug
-                
                 $('#wait_1').hide();
                 $('#result_1').html(response).fadeIn();
                 $('#result_2').html('<select name="proc" id="proc" class="form-control"><option value="">--- Select Process ---</option></select>').show();
-                
-                // Attach event untuk device
                 attachDeviceEvent();
             },
             error: function(xhr, status, error){
@@ -196,8 +200,6 @@ $(document).ready(function() {
     function attachDeviceEvent() {
         $('#device').off('change').on('change', function(){
             var device_value = $(this).val();
-            
-            console.log('Device selected:', device_value); // Debug
             
             if(device_value == '' || device_value == 'General production' || device_value == 'General PC') {
                 $('#result_2').html('<select name="proc" id="proc" class="form-control"><option value="">--- Select Process ---</option><option value="General Process">General Process</option></select>').show();
@@ -215,8 +217,6 @@ $(document).ready(function() {
                     drop_var2: device_value 
                 },
                 success: function(response){
-                    console.log('Process response:', response); // Debug
-                    
                     $('#wait_2').hide();
                     $('#result_2').html(response).fadeIn();
                 },
@@ -251,7 +251,6 @@ $(document).ready(function() {
         $('#modalSosialisasi').modal('show');
     });
     
-    // reset form saat modal ditutup
     $('#modalSosialisasi').on('hidden.bs.modal', function () {
         $(this).find('form')[0].reset();
     });
@@ -286,7 +285,6 @@ $(document).ready(function () {
         $('#modalSosialisasi').modal('show');
     });
     
-    // reset form saat modal ditutup
     $('#modalSosialisasi').on('hidden.bs.modal', function () {
         $(this).find('form')[0].reset();
     });
@@ -319,15 +317,13 @@ $(document).ready(function () {
             <table>
                 <?php
                 // ===== FIXED ORDER: Pastikan cascade dropdown selalu berurutan =====
-                // Urutan yang benar: section_prod → device → process → status → category
-                
                 $orderedFilters = [];
                 
                 // Jika pakai cascade, prioritaskan section_prod, device, process di awal
                 if ($useCascadeDropdown) {
                     $orderedFilters = ['section_prod', 'device', 'process'];
                     
-                    // Tambahkan filter lainnya yang aktif (selain yang sudah di ordered)
+                    // Tambahkan filter lainnya yang aktif
                     foreach ($filterConfig as $filterKey => $isEnabled) {
                         if ($isEnabled && !in_array($filterKey, $orderedFilters)) {
                             $orderedFilters[] = $filterKey;
@@ -346,7 +342,8 @@ $(document).ready(function () {
                 foreach ($orderedFilters as $filterKey):
                     if (!isset($filterConfig[$filterKey]) || !$filterConfig[$filterKey]) continue;
                     
-                    $filterData = getFilterData($filterKey, $globalFilters);
+                    // ✅ Pass document type name untuk dynamic type options
+                    $filterData = getFilterData($filterKey, $globalFilters, $type);
                     $filterLabel = $filterData['label'];
                     $filterOptions = $filterData['options'];
                     $paramName = getParamName($filterKey);
@@ -403,7 +400,7 @@ $(document).ready(function () {
                                 
                                 // Special handling untuk status display
                                 $displayText = $opt;
-                                if ($filterKey === 'status' && $opt === 'Secured') {
+                                if ($filterKey === 'status' && $opt === 'Approve') {
                                     $displayText = 'Approved';
                                 }
                                 
@@ -454,11 +451,9 @@ if (isset($_GET['submit'])) {
         
         // ✅ SKIP section_prod dari WHERE karena pakai JOIN
         if ($filterKey === 'section_prod') {
-            // Check apakah user memilih section_prod
             if (isset($_GET[$paramName]) && trim($_GET[$paramName]) !== '') {
                 $needJoinDevice = true;
                 $section_prod_value = mysqli_real_escape_string($link, $_GET[$paramName]);
-                // WHERE clause akan ditambahkan setelah JOIN
             }
             continue;
         }
@@ -520,7 +515,7 @@ if (isset($_GET['submit'])) {
             if (!$isEnabled) continue;
             $paramName = getParamName($filterKey);
             if (isset($_GET[$paramName]) && trim($_GET[$paramName]) !== '') {
-                $filterData = getFilterData($filterKey, $globalFilters);
+                $filterData = getFilterData($filterKey, $globalFilters, $type);
                 echo "<li><strong>" . htmlspecialchars($filterData['label']) . ":</strong> " . htmlspecialchars($_GET[$paramName]) . "</li>";
             }
         }
@@ -605,6 +600,7 @@ if (isset($_GET['submit'])) {
                             <span class="glyphicon glyphicon-remove"></span>
                         </a>
 
+                            <?php if ($info['status'] === 'Approved'): ?>
                         <a data-toggle="modal" data-target="#myModal2"
                             data-id="<?php echo htmlspecialchars($info['no_drf']); ?>"
                             data-lama="<?php echo htmlspecialchars($info['file']); ?>"
@@ -613,6 +609,7 @@ if (isset($_GET['submit'])) {
                             title="Secure Document">
                             <span class="glyphicon glyphicon-play"></span>
                         </a>
+                    <?php endif; ?>
                     <?php
                     }
                     ?>
@@ -671,8 +668,14 @@ if (isset($_GET['submit'])) {
         // List filter yang tersedia
         foreach ($filterConfig as $filterKey => $isEnabled) {
             if (!$isEnabled) continue;
-            $filterData = getFilterData($filterKey, $globalFilters);
-            echo "<li><strong>" . htmlspecialchars($filterData['label']) . "</strong></li>";
+            $filterData = getFilterData($filterKey, $globalFilters, $type);
+            echo "<li><strong>" . htmlspecialchars($filterData['label']) . "</strong>";
+            
+            // Tampilkan options untuk filter type
+            if ($filterKey === 'type' && !empty($filterData['options'])) {
+                echo " (" . implode(', ', $filterData['options']) . ")";
+            }
+            echo "</li>";
         }
         
         echo "</ul>";
@@ -756,43 +759,3 @@ if (isset($_GET['submit'])) {
 </div>
 
 <script src="bootstrap/js/bootstrap.min.js"></script>
-
-<?php if ($useCascadeDropdown): ?>
-<script type="text/javascript">
-// Cascade script untuk section -> device -> process
-$(document).ready(function() {
-    $('#wait_1').hide();
-    $('#section').change(function(){
-        $('#wait_1').show();
-        $('#result_1').hide();
-        $.get("func.php", { func: "section", drop_var: $('#section').val() }, function(response){
-            $('#result_1').fadeOut();
-            setTimeout(function(){ finishAjax1('result_1', escape(response)); }, 400);
-        });
-        return false;
-    });
-});
-
-function finishAjax1(id, response) {
-    $('#wait_1').hide();
-    $('#'+id).html(unescape(response));
-    $('#'+id).fadeIn();
-    $('#wait_2').hide();
-    $('#device').change(function(){
-        $('#wait_2').show();
-        $('#result_2').hide();
-        $.get("func.php", { func: "device", drop_var2: $('#device').val() }, function(response){
-            $('#result_2').fadeOut();
-            setTimeout(function(){ finishAjax('result_2', escape(response)); }, 400);
-        });
-        return false;
-    });
-}
-
-function finishAjax(id, response) {
-    $('#wait_2').hide();
-    $('#'+id).html(unescape(response));
-    $('#'+id).fadeIn();
-}
-</script>
-<?php endif; ?>

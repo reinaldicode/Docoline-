@@ -1,4 +1,5 @@
 <?php
+// ini edit_document.php - FIXED VERSION
 // ===== PROSES POST DULU SEBELUM ADA OUTPUT APAPUN =====
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit'])) {
     $jsonFile = __DIR__ . '/data/document_types.json';
@@ -11,8 +12,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit'])) {
     // Ambil filter config dari checkbox yang di-submit
     $filterConfig = [];
     
-    // Updated filter keys
-    $availableFilterKeys = ['section_dept', 'section_prod', 'status', 'category', 'device', 'process'];
+    // ✅ FIXED: Ambil semua filter keys dari filter_options.json
+    $filterOptionsFile = __DIR__ . '/data/filter_options.json';
+    $availableFilters = json_decode(file_get_contents($filterOptionsFile), true);
+    $availableFilterKeys = array_keys($availableFilters);
     
     foreach ($availableFilterKeys as $key) {
         $filterConfig[$key] = isset($_POST['filter_' . $key]) ? true : false;
@@ -49,6 +52,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit'])) {
                 if (!isset($types[$idx]['submenu']) || !is_array($types[$idx]['submenu'])) {
                     $types[$idx]['submenu'] = [];
                 }
+                
+                // ✅ SYNC: Update filter_config ke semua submenu yang ada
+                if (!empty($types[$idx]['submenu'])) {
+                    foreach ($types[$idx]['submenu'] as $subIdx => $submenu) {
+                        // Submenu inherit parent filter config sebagai default
+                        // Tapi tetap pertahankan custom config jika sudah diatur
+                        if (!isset($submenu['filter_config']) || empty($submenu['filter_config'])) {
+                            $types[$idx]['submenu'][$subIdx]['filter_config'] = $filterConfig;
+                        }
+                    }
+                }
             } else {
                 // Jika has_submenu dimatikan, hapus semua submenu
                 $types[$idx]['submenu'] = [];
@@ -79,33 +93,8 @@ $availableFilters = [];
 if (file_exists($filterOptionsFile)) {
     $availableFilters = json_decode(file_get_contents($filterOptionsFile), true);
 } else {
-    // Fallback
-    $availableFilters = [
-        'section_dept' => [
-            'label' => 'Section (Department)',
-            'description' => 'Filter by department/administrative section'
-        ],
-        'section_prod' => [
-            'label' => 'Section (Production)',
-            'description' => 'Filter by production section/line'
-        ],
-        'status' => [
-            'label' => 'Status',
-            'description' => 'Document approval status'
-        ],
-        'category' => [
-            'label' => 'Category',
-            'description' => 'Internal or External document'
-        ],
-        'device' => [
-            'label' => 'Device',
-            'description' => 'Production device/equipment'
-        ],
-        'process' => [
-            'label' => 'Process',
-            'description' => 'Manufacturing process stage'
-        ]
-    ];
+    echo "<div class='alert alert-danger'>Error: filter_options.json not found!</div>";
+    exit;
 }
 
 // Validasi index
@@ -141,6 +130,14 @@ foreach ($availableFilters as $key => $filter) {
         $filterConfig[$key] = false;
     }
 }
+
+// ✅ NEW: Check if this document type has dynamic type options
+$hasDynamicTypeOptions = false;
+$dynamicTypeOptions = [];
+if (isset($availableFilters['type']['options_by_doctype'][$current['name']])) {
+    $hasDynamicTypeOptions = true;
+    $dynamicTypeOptions = $availableFilters['type']['options_by_doctype'][$current['name']];
+}
 ?>
 
 <br /><br />
@@ -149,6 +146,15 @@ foreach ($availableFilters as $key => $filter) {
 <div class="col-xs-6 well well-lg">
  <h2><span class="glyphicon glyphicon-edit"></span> Edit Document Type</h2>
  <p class="text-muted">Edit konfigurasi untuk: <strong><?php echo htmlspecialchars($current['name']); ?></strong></p>
+ 
+ <?php if ($hasSubmenu): ?>
+ <div class="alert alert-info">
+     <span class="glyphicon glyphicon-info-sign"></span>
+     <strong>Info:</strong> Document type ini memiliki <strong><?php echo $submenuCount; ?> submenu</strong>. 
+     Filter configuration submenu dikelola di masing-masing submenu.
+ </div>
+ <?php endif; ?>
+ 
  <hr>
 
  <?php if ($error): ?>
@@ -199,8 +205,20 @@ foreach ($availableFilters as $key => $filter) {
 
      <h4>
          <span class="glyphicon glyphicon-filter"></span> Filter Configuration
+         <?php if ($hasSubmenu): ?>
+         <span class="label label-info">Parent Default</span>
+         <?php endif; ?>
      </h4>
+     
+     <?php if ($hasSubmenu): ?>
+     <div class="alert alert-info">
+         <span class="glyphicon glyphicon-info-sign"></span>
+         Filter ini akan menjadi <strong>default untuk submenu baru</strong>. 
+         Submenu yang sudah ada dapat memiliki konfigurasi filter sendiri.
+     </div>
+     <?php else: ?>
      <p class="text-muted">Pilih filter yang akan tersedia di halaman document list:</p>
+     <?php endif; ?>
 
      <?php if ($isLegacy): ?>
      <div class="alert alert-warning">
@@ -223,6 +241,9 @@ foreach ($availableFilters as $key => $filter) {
                  $isChecked = isset($filterConfig[$key]) && $filterConfig[$key] === true;
                  $filterLabel = isset($filter['label']) ? $filter['label'] : ucfirst(str_replace('_', ' ', $key));
                  $filterDesc = isset($filter['description']) ? $filter['description'] : '';
+                 
+                 // ✅ Check if this is dynamic type filter
+                 $isDynamicType = ($key === 'type' && $hasDynamicTypeOptions);
              ?>
                  <div class="checkbox" style="margin-bottom: 15px;">
                      <label>
@@ -231,10 +252,16 @@ foreach ($availableFilters as $key => $filter) {
                                 <?php echo $isChecked ? 'checked' : ''; ?>
                                 <?php echo $isLegacy ? 'disabled' : ''; ?>>
                          <strong><?php echo htmlspecialchars($filterLabel); ?></strong>
+                         <?php if ($isDynamicType): ?>
+                         <span class="label label-success">Dynamic</span>
+                         <?php endif; ?>
                      </label>
                      <br>
                      <small class="text-muted" style="margin-left: 20px;">
                          <?php echo htmlspecialchars($filterDesc); ?>
+                         <?php if ($isDynamicType): ?>
+                         <br><strong>Options:</strong> <?php echo implode(', ', $dynamicTypeOptions); ?>
+                         <?php endif; ?>
                      </small>
                  </div>
              <?php 
@@ -247,10 +274,11 @@ foreach ($availableFilters as $key => $filter) {
 
      <div class="alert alert-warning">
          <span class="glyphicon glyphicon-info-sign"></span>
-         <strong>Perbedaan Section:</strong>
+         <strong>Catatan Penting:</strong>
          <ul style="margin: 5px 0 0 0;">
              <li><strong>Section (Department)</strong> - Untuk dokumen departemen (QC, Engineering, dll)</li>
              <li><strong>Section (Production)</strong> - Untuk dokumen production (Opto, Laser, dll)</li>
+             <li><strong>Type</strong> - Filter dinamis, options berbeda untuk setiap document type</li>
          </ul>
      </div>
 
@@ -277,28 +305,32 @@ foreach ($availableFilters as $key => $filter) {
 
 <script>
 $(document).ready(function(){
-    // Dependency handling: Process requires Device
-    $('input[data-key="process"]').change(function(){
-        if($(this).is(':checked')) {
-            $('input[data-key="device"]').prop('checked', true);
-        }
-    });
+    var isLegacy = <?php echo $isLegacy ? 'true' : 'false'; ?>;
+    
+    if (!isLegacy) {
+        // Dependency handling: Process requires Device
+        $('input[data-key="process"]').change(function(){
+            if($(this).is(':checked')) {
+                $('input[data-key="device"]').prop('checked', true);
+            }
+        });
 
-    $('input[data-key="device"]').change(function(){
-        if(!$(this).is(':checked') && $('input[data-key="process"]').is(':checked')) {
-            alert('Filter Process membutuhkan Filter Device. Filter Process akan dinonaktifkan.');
-            $('input[data-key="process"]').prop('checked', false);
-        }
-    });
+        $('input[data-key="device"]').change(function(){
+            if(!$(this).is(':checked') && $('input[data-key="process"]').is(':checked')) {
+                alert('Filter Process membutuhkan Filter Device. Filter Process akan dinonaktifkan.');
+                $('input[data-key="process"]').prop('checked', false);
+            }
+        });
 
-    // Warning jika memilih kedua section sekaligus
-    $('input[data-key="section_dept"], input[data-key="section_prod"]').change(function(){
-        var deptChecked = $('input[data-key="section_dept"]').is(':checked');
-        var prodChecked = $('input[data-key="section_prod"]').is(':checked');
-        
-        if(deptChecked && prodChecked) {
-            alert('Info: Anda memilih kedua jenis Section. Ini akan menampilkan 2 filter section di halaman dokumen.');
-        }
-    });
+        // Warning jika memilih kedua section sekaligus
+        $('input[data-key="section_dept"], input[data-key="section_prod"]').change(function(){
+            var deptChecked = $('input[data-key="section_dept"]').is(':checked');
+            var prodChecked = $('input[data-key="section_prod"]').is(':checked');
+            
+            if(deptChecked && prodChecked) {
+                alert('Info: Anda memilih kedua jenis Section. Ini akan menampilkan 2 filter section di halaman dokumen.');
+            }
+        });
+    }
 });
 </script>

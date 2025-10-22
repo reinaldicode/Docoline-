@@ -270,10 +270,13 @@ while($data = mysqli_fetch_array($res))
                         <option value="Form" <?php if ($data['doc_type']=="Form") {echo 'selected';} ?> > Form </option>
                         <option value="Procedure" <?php if ($data['doc_type']=="Procedure") {echo 'selected';} ?> > Procedure </option>
                         <option value="WI" <?php if ($data['doc_type']=="WI") {echo 'selected';} ?> > WI </option>
-                        <option value="Monitor Sample" <?php if ($data['doc_type']=="Monitor Sample") {echo 'selected';} ?> > Monitor Sample </option>
+                        <option value="Sample" <?php if ($data['doc_type']=="Sample") {echo 'selected';} ?> > Sample </option>
                         <option value="MSDS" <?php if ($data['doc_type']=="MSDS") {echo 'selected';} ?> > MSDS </option>
-                        <option value="Material Spec" <?php if ($data['doc_type']=="Material Spec") {echo 'selected';} ?> > Material Spec </option>
-                        <option value="ROHS" <?php if ($data['doc_type']=="ROHS") {echo 'selected';} ?> > ROHS </option>
+                        <option value="MS & ROHS" <?php if ($data['doc_type']=="MS & ROHS") {echo 'selected';} ?> > MS & ROHS </option>
+                        <option value="Manual" <?php if ($data['doc_type']=="Manual") {echo 'selected';} ?> > Manual </option>
+                        <option value="Obsolate" <?php if ($data['doc_type']=="Obsolate") {echo 'selected';} ?> > Obsolate </option>
+                        <option value="SATO" <?php if ($data['doc_type']=="SATO") {echo 'selected';} ?> > SATO </option>
+                        <option value="PE" <?php if ($data['doc_type']=="PE") {echo 'selected';} ?> > PE </option>
                     </select>
                     <?php
                 }
