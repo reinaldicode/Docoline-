@@ -26,6 +26,40 @@
             "SHE"
         ]
     },
+    "section_prod": {
+        "label": "Section (Production)",
+        "description": "Filter by production section/line",
+        "options": [
+            "Opto",
+            "Laser",
+            "Line 1",
+            "Line 2",
+            "Line 3",
+            "Line 4",
+            "Assembly"
+        ]
+    },
+    "device": {
+        "label": "Device",
+        "description": "Production device/equipment",
+        "options": [
+            "Device A",
+            "Device B",
+            "Device C",
+            "-"
+        ]
+    },
+    "process": {
+        "label": "Process",
+        "description": "Manufacturing process stage",
+        "options": [
+            "Process 1",
+            "Process 2",
+            "Process 3",
+            "Assembly",
+            "Testing"
+        ]
+    },
     "status": {
         "label": "Status",
         "description": "Document approval status",
