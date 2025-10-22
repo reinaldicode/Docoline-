@@ -67,18 +67,23 @@ if (empty($filterConfig)) {
     ];
 }
 
+// ===== SPECIAL HANDLING: Manual =====
+$isManualType = (strcasecmp($type, 'Manual') === 0);
+
 // ===== AUTO-FILTER: Remove filters yang kolom database-nya tidak ada =====
-foreach ($filterConfig as $filterKey => $isEnabled) {
-    if (!$isEnabled) continue;
-    
-    // SKIP filters yang tidak butuh kolom database
-    if (in_array($filterKey, ['section_prod', 'device', 'process', 'type'])) continue;
-    
-    $dbColumn = getDbColumn($filterKey);
-    
-    // Jika kolom tidak ada di database, auto-disable filter ini
-    if (!in_array($dbColumn, $availableDbColumns)) {
-        $filterConfig[$filterKey] = false;
+if (!$isManualType) {
+    foreach ($filterConfig as $filterKey => $isEnabled) {
+        if (!$isEnabled) continue;
+        
+        // SKIP filters yang tidak butuh kolom database
+        if (in_array($filterKey, ['section_prod', 'device', 'process', 'type'])) continue;
+        
+        $dbColumn = getDbColumn($filterKey);
+        
+        // Jika kolom tidak ada di database, auto-disable filter ini
+        if (!in_array($dbColumn, $availableDbColumns)) {
+            $filterConfig[$filterKey] = false;
+        }
     }
 }
 
@@ -109,7 +114,6 @@ function getFilterData($filterKey, $globalFilters, $docTypeName = '') {
 
 // Mapping parameter GET untuk backward compatibility
 function getParamName($filterKey) {
-    // Map filter keys ke nama parameter GET
     $mapping = [
         'section_dept' => 'section',
         'section_prod' => 'section',
@@ -117,7 +121,8 @@ function getParamName($filterKey) {
         'category' => 'cat',
         'device' => 'device',
         'status' => 'status',
-        'type' => 'doctype'  // ✅ Parameter untuk type filter
+        'type' => 'doctype',
+        'language' => 'lang'
     ];
     
     return isset($mapping[$filterKey]) ? $mapping[$filterKey] : $filterKey;
@@ -126,17 +131,19 @@ function getParamName($filterKey) {
 // Mapping database column untuk section types
 function getDbColumn($filterKey) {
     if ($filterKey === 'section_dept') return 'section';
-    if ($filterKey === 'section_prod') return 'section_prod'; // Tidak ada di DB, pakai JOIN
+    if ($filterKey === 'section_prod') return 'section_prod';
     if ($filterKey === 'process') return 'process';
     if ($filterKey === 'category') return 'category';
-    if ($filterKey === 'type') return 'doc_type'; // ✅ Kolom database untuk type
+    if ($filterKey === 'type') return 'doc_type';
     if ($filterKey === 'device') return 'device';
     if ($filterKey === 'status') return 'status';
+    if ($filterKey === 'language') return 'language';
     return $filterKey;
 }
 
 // Check if this page needs CASCADE dropdown (section_prod + device)
-$useCascadeDropdown = isset($filterConfig['section_prod']) && $filterConfig['section_prod'] === true 
+$useCascadeDropdown = !$isManualType && 
+                      isset($filterConfig['section_prod']) && $filterConfig['section_prod'] === true 
                       && isset($filterConfig['device']) && $filterConfig['device'] === true;
 
 // Title halaman
@@ -298,7 +305,7 @@ $(document).ready(function () {
 
 <br />
 
-<h3><?php echo htmlspecialchars($type); ?>
+<h3><?php echo $isManualType ? 'Company Manual List' : htmlspecialchars($type); ?>
 <?php if (!empty($subtype)): ?>
     - <?php echo htmlspecialchars($subtype); ?>
 <?php endif; ?>
@@ -315,6 +322,24 @@ $(document).ready(function () {
             <?php endif; ?>
             
             <table>
+                <?php
+                // ===== SPECIAL HANDLING: Manual Type =====
+                if ($isManualType):
+                ?>
+                <tr>
+                    <td>Language</td>
+                    <td>:</td>
+                    <td>
+                        <select name="lang" class="form-control">
+                            <option value="">--- Select Language ---</option>
+                            <option value="Indonesian" <?php if(isset($_GET['lang']) && $_GET['lang']=='Indonesian') echo 'selected'; ?>>Indonesian</option>
+                            <option value="English" <?php if(isset($_GET['lang']) && $_GET['lang']=='English') echo 'selected'; ?>>English</option>
+                        </select>
+                    </td>
+                </tr>
+                
+                <?php else: // NORMAL FILTERS FOR OTHER TYPES ?>
+                
                 <?php
                 // ===== FIXED ORDER: Pastikan cascade dropdown selalu berurutan =====
                 $orderedFilters = [];
@@ -342,7 +367,6 @@ $(document).ready(function () {
                 foreach ($orderedFilters as $filterKey):
                     if (!isset($filterConfig[$filterKey]) || !$filterConfig[$filterKey]) continue;
                     
-                    // ✅ Pass document type name untuk dynamic type options
                     $filterData = getFilterData($filterKey, $globalFilters, $type);
                     $filterLabel = $filterData['label'];
                     $filterOptions = $filterData['options'];
@@ -400,7 +424,7 @@ $(document).ready(function () {
                                 
                                 // Special handling untuk status display
                                 $displayText = $opt;
-                                if ($filterKey === 'status' && $opt === 'Approve') {
+                                if ($filterKey === 'status' && $opt === 'Secured') {
                                     $displayText = 'Approved';
                                 }
                                 
@@ -415,12 +439,14 @@ $(document).ready(function () {
                     endif; // end special handling
                 endforeach; // end foreach filter
                 ?>
+                
+                <?php endif; // end if Manual ?>
 
                 <tr>
                     <td></td>
                     <td></td>
                     <td>
-                        <input type="hidden" name="by" value="no_drf">
+                        <input type="hidden" name="by" value="<?php echo $isManualType ? 'no_doc' : 'no_drf'; ?>">
                         <input type="submit" value="Show" name="submit" class="btn btn-info">
                     </td>
                 </tr>
@@ -436,67 +462,142 @@ if (isset($_GET['submit'])) {
     $state = isset($_SESSION['state']) ? $_SESSION['state'] : '';
     $nrp = isset($_SESSION['nrp']) ? $_SESSION['nrp'] : '';
     
-    // WHERE condition untuk doc_type (WAJIB)
-    $whereConditions = ["docu.doc_type = '" . mysqli_real_escape_string($link, $type) . "'"];
-    
-    // ===== FLEXIBLE FILTER WITH JOIN SUPPORT =====
-    $needJoinDevice = false;
-    $section_prod_value = '';
-    
-    foreach ($filterConfig as $filterKey => $isEnabled) {
-        if (!$isEnabled) continue;
+    // ===== SPECIAL QUERY FOR MANUAL =====
+    if ($isManualType) {
+        $lang = isset($_GET['lang']) ? mysqli_real_escape_string($link, $_GET['lang']) : '';
         
-        // Get parameter name
-        $paramName = getParamName($filterKey);
-        
-        // ✅ SKIP section_prod dari WHERE karena pakai JOIN
-        if ($filterKey === 'section_prod') {
-            if (isset($_GET[$paramName]) && trim($_GET[$paramName]) !== '') {
-                $needJoinDevice = true;
-                $section_prod_value = mysqli_real_escape_string($link, $_GET[$paramName]);
+        if (empty($lang)) {
+            echo "<div class='alert alert-warning' style='margin-top:20px;'>Please select a language first.</div>";
+        } else {
+            // Query khusus Manual: section='Manual' AND title='language'
+            $sql = "SELECT * FROM docu WHERE section='Manual' AND title='$lang' ORDER BY no_doc";
+            $result = mysqli_query($link, $sql);
+            
+            if (!$result) {
+                echo "<div class='alert alert-danger'>Query error: ". htmlspecialchars(mysqli_error($link)) ."</div>";
+                exit;
             }
-            continue;
+            
+            $rowCount = mysqli_num_rows($result);
+            
+            // Display results for Manual
+            ?>
+            <br /><br />
+            <h3>Manual List: <strong>Language: <?php echo htmlspecialchars($lang); ?></strong></h3>
+            
+            <?php if ($rowCount == 0): ?>
+                <div class='alert alert-warning' style='margin:20px;'>
+                    <h4><span class='glyphicon glyphicon-search'></span> No documents found</h4>
+                    <p>No Manual documents found for language: <strong><?php echo htmlspecialchars($lang); ?></strong></p>
+                </div>
+            <?php else: ?>
+            
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead style="background:#00FFFF;">
+                        <tr>
+                            <th>No</th>
+                            <th>Title</th>
+                            <th>Language</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php
+                    $i = 1;
+                    while ($info = mysqli_fetch_assoc($result)) {
+                        // Tentukan folder tempat file
+                        if ($info['no_drf'] > 12955) { 
+                            $tempat = $info['doc_type']; 
+                        } else { 
+                            $tempat = 'document'; 
+                        }
+                    ?>
+                        <tr>
+                            <td><?php echo $i; ?></td>
+                            <td>
+                                <a href="<?php echo htmlspecialchars($tempat . '/' . $info['file']); ?>" target="_blank">
+                                    <?php echo htmlspecialchars($info['no_doc']);?>
+                                </a>
+                            </td>
+                            <td><?php echo htmlspecialchars($info['title']);?></td>
+                        </tr>
+                    <?php
+                        $i++;
+                    }
+                    ?>
+                    </tbody>
+                </table>
+            </div>
+            
+            <?php
+            endif; // end if rowCount > 0
+            mysqli_free_result($result);
         }
         
-        // Get database column name
-        $dbColumn = getDbColumn($filterKey);
-        
-        // HANYA tambahkan filter jika user memilih nilai
-        if (isset($_GET[$paramName]) && trim($_GET[$paramName]) !== '') {
-            $whereConditions[] = "docu.$dbColumn = '" . mysqli_real_escape_string($link, $_GET[$paramName]) . "'";
-        }
-    }
-    
-    // ===== BUILD SQL QUERY =====
-    $by = isset($_GET['by']) ? mysqli_real_escape_string($link, $_GET['by']) : 'no_drf';
-    
-    // Base query
-    if ($needJoinDevice) {
-        // Query dengan JOIN ke device table
-        $sql = "SELECT docu.* FROM docu 
-                LEFT JOIN device ON docu.device = device.name 
-                WHERE " . implode(' AND ', $whereConditions);
-        
-        // Tambahkan filter section_prod
-        if (!empty($section_prod_value)) {
-            $sql .= " AND device.group_dev = '$section_prod_value'";
-        }
-        
-        $sql .= " ORDER BY docu.$by DESC";
     } else {
-        // Query normal tanpa JOIN
-        $sql = "SELECT * FROM docu WHERE " . implode(' AND ', $whereConditions) . " ORDER BY $by DESC";
-    }
-    
-    $result = mysqli_query($link, $sql);
-    
-    if (!$result) {
-        echo "<div class='alert alert-danger'>Query error: ". htmlspecialchars(mysqli_error($link)) ."</div>";
-        echo "<div class='alert alert-info'>Query: " . htmlspecialchars($sql) . "</div>";
-        exit;
-    }
-    
-    $rowCount = mysqli_num_rows($result);
+        // ===== NORMAL QUERY FOR OTHER DOCUMENT TYPES =====
+        
+        // WHERE condition untuk doc_type (WAJIB)
+        $whereConditions = ["docu.doc_type = '" . mysqli_real_escape_string($link, $type) . "'"];
+        
+        // ===== FLEXIBLE FILTER WITH JOIN SUPPORT =====
+        $needJoinDevice = false;
+        $section_prod_value = '';
+        
+        foreach ($filterConfig as $filterKey => $isEnabled) {
+            if (!$isEnabled) continue;
+            
+            // Get parameter name
+            $paramName = getParamName($filterKey);
+            
+            // ✅ SKIP section_prod dari WHERE karena pakai JOIN
+            if ($filterKey === 'section_prod') {
+                if (isset($_GET[$paramName]) && trim($_GET[$paramName]) !== '') {
+                    $needJoinDevice = true;
+                    $section_prod_value = mysqli_real_escape_string($link, $_GET[$paramName]);
+                }
+                continue;
+            }
+            
+            // Get database column name
+            $dbColumn = getDbColumn($filterKey);
+            
+            // HANYA tambahkan filter jika user memilih nilai
+            if (isset($_GET[$paramName]) && trim($_GET[$paramName]) !== '') {
+                $whereConditions[] = "docu.$dbColumn = '" . mysqli_real_escape_string($link, $_GET[$paramName]) . "'";
+            }
+        }
+        
+        // ===== BUILD SQL QUERY =====
+        $by = isset($_GET['by']) ? mysqli_real_escape_string($link, $_GET['by']) : 'no_drf';
+        
+        // Base query
+        if ($needJoinDevice) {
+            // Query dengan JOIN ke device table
+            $sql = "SELECT docu.* FROM docu 
+                    LEFT JOIN device ON docu.device = device.name 
+                    WHERE " . implode(' AND ', $whereConditions);
+            
+            // Tambahkan filter section_prod
+            if (!empty($section_prod_value)) {
+                $sql .= " AND device.group_dev = '$section_prod_value'";
+            }
+            
+            $sql .= " ORDER BY docu.$by DESC";
+        } else {
+            // Query normal tanpa JOIN
+            $sql = "SELECT * FROM docu WHERE " . implode(' AND ', $whereConditions) . " ORDER BY $by DESC";
+        }
+        
+        $result = mysqli_query($link, $sql);
+        
+        if (!$result) {
+            echo "<div class='alert alert-danger'>Query error: ". htmlspecialchars(mysqli_error($link)) ."</div>";
+            echo "<div class='alert alert-info'>Query: " . htmlspecialchars($sql) . "</div>";
+            exit;
+        }
+        
+        $rowCount = mysqli_num_rows($result);
 ?>
 
 <br /><br />
@@ -600,7 +701,7 @@ if (isset($_GET['submit'])) {
                             <span class="glyphicon glyphicon-remove"></span>
                         </a>
 
-                            <?php if ($info['status'] === 'Approved'): ?>
+                        <?php if ($info['status'] === 'Approved'): ?>
                         <a data-toggle="modal" data-target="#myModal2"
                             data-id="<?php echo htmlspecialchars($info['no_drf']); ?>"
                             data-lama="<?php echo htmlspecialchars($info['file']); ?>"
@@ -609,7 +710,7 @@ if (isset($_GET['submit'])) {
                             title="Secure Document">
                             <span class="glyphicon glyphicon-play"></span>
                         </a>
-                    <?php endif; ?>
+                        <?php endif; ?>
                     <?php
                     }
                     ?>
@@ -646,12 +747,17 @@ if (isset($_GET['submit'])) {
 <?php
     endif; // end if rowCount > 0
     mysqli_free_result($result);
+    
+    } // end else (normal doc types)
+    
 } else {
     // Tampilkan instruksi jika belum submit
     echo "<div class='alert alert-info' style='margin-top:20px;'>";
     echo "<h4><span class='glyphicon glyphicon-info-sign'></span> Cara Menggunakan</h4>";
     
-    if ($useCascadeDropdown) {
+    if ($isManualType) {
+        echo "<p>Select a <strong>Language</strong> and click <strong>Show</strong> to display company manuals.</p>";
+    } elseif ($useCascadeDropdown) {
         echo "<p>Untuk melihat dokumen <strong>" . htmlspecialchars($type) . "</strong>:</p>";
         echo "<ol>";
         echo "<li>Pilih <strong>Section (Production)</strong> terlebih dahulu</li>";
