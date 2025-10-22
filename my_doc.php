@@ -185,6 +185,17 @@ $docTypes = loadDocumentTypes();
 $notifCounts = getNotificationCounts($link, $nrp, $state, $docTypes);
 $recentNotifications = getRecentNotifications($link, $nrp, $state);
 
+// ✅ AUTO SHOW: Jika ada notifikasi dan belum submit, otomatis tampilkan semua dokumen
+$autoShow = false;
+if($notifCounts['total'] > 0 && !isset($_GET['submit'])) {
+    $autoShow = true;
+    $_GET['submit'] = 'Show';
+    $_GET['tipe'] = '-'; // Tampilkan semua tipe
+    if($state == 'Admin') {
+        $_GET['status'] = 'Review'; // Default status untuk Admin
+    }
+}
+
 ?>
 
 <style>
@@ -594,18 +605,36 @@ $(document).ready(function () {
 <?php
 if(isset($_GET['submit']))
 {
-    $tipe=$_GET['tipe'];
-
-    if($tipe=="-"){
-        $sort="";
-    }else{
-        $tipe_escaped = mysqli_real_escape_string($link, $tipe);
-        $sort="and doc_type='$tipe_escaped'";
+    // ✅ INISIALISASI VARIABLE DENGAN DEFAULT VALUE
+    $tipe = isset($_GET['tipe']) ? $_GET['tipe'] : '-';
+    $status = ''; // Default empty string
+    
+    // Untuk Admin, ambil status dari GET parameter atau default 'Review'
+    if($state == 'Admin') {
+        if(isset($_GET['status']) && $_GET['status'] != '-') {
+            $status = $_GET['status'];
+        } else {
+            // Default ke semua status aktif jika auto show
+            $status = ''; 
+        }
     }
 
-    if($state=='Admin') {
-        $sql="select * from docu where status='$status' $sort order by no_drf";
-        $res=mysqli_query($link, $sql);
+    if($tipe == "-"){
+        $sort = "";
+    } else {
+        $tipe_escaped = mysqli_real_escape_string($link, $tipe);
+        $sort = "and doc_type='$tipe_escaped'";
+    }
+
+    if($state == 'Admin') {
+        // Jika status kosong atau '-', tampilkan semua status aktif
+        if(empty($status) || $status == '-') {
+            $sql = "select * from docu where status IN ('Review', 'Pending', 'Edited') $sort order by no_drf";
+        } else {
+            $sql = "select * from docu where status='$status' $sort order by no_drf";
+        }
+        
+        $res = mysqli_query($link, $sql);
         
         if (!$res) {
             die("Query Error: " . mysqli_error($link));
@@ -614,12 +643,12 @@ if(isset($_GET['submit']))
         // Tampilkan tabel biasa untuk Admin
         renderDocumentTable($res, $link, $nrp, $state, $tipe, $status);
     }
-    elseif($state=='Originator') {
-        $sql="select * from docu 
-              where (docu.status='Review' or docu.status='Pending' or docu.status='Edited') 
-              $sort and user_id='$nrp' 
-              order by no_drf";
-        $res=mysqli_query($link, $sql);
+    elseif($state == 'Originator') {
+        $sql = "select * from docu 
+                where (docu.status='Review' or docu.status='Pending' or docu.status='Edited') 
+                $sort and user_id='$nrp' 
+                order by no_drf";
+        $res = mysqli_query($link, $sql);
         
         if (!$res) {
             die("Query Error: " . mysqli_error($link));
@@ -628,7 +657,7 @@ if(isset($_GET['submit']))
         // Tampilkan tabel biasa untuk Originator
         renderDocumentTable($res, $link, $nrp, $state, $tipe, '');
     }
-    elseif($state=='Approver') {
+    elseif($state == 'Approver') {
         // UNTUK APPROVER: PISAHKAN MENJADI 2 SECTION
         
         // ============================================================
@@ -964,5 +993,3 @@ $j++;
         </div>
     </div>
 </div>
-
-<?php 
