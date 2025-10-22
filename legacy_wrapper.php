@@ -191,25 +191,22 @@ class LegacyFilterWrapper {
         $needJoin = false;
         $sectionProdValue = '';
         
-        // 🆕 SPECIAL HANDLING: Untuk Obsolate, jangan filter doc_type dari $this->docType
-        // Karena Obsolate bisa menampilkan WI, Procedure, atau Form
+        // SPECIAL HANDLING: Untuk Obsolate, jangan filter doc_type
         if ($this->docType !== 'Obsolate' && $this->docType !== 'MS & ROHS') {
             $whereConditions[] = "docu.doc_type = '" . mysqli_real_escape_string($this->link, $this->docType) . "'";
         }
         
-        // 🆕 Untuk Obsolate, WAJIB filter status = 'Obsolate'
+        // Untuk Obsolate, WAJIB filter status = 'Obsolate'
         if ($this->docType === 'Obsolate') {
             $whereConditions[] = "docu.status = 'Obsolate'";
         }
         
-        // 🆕 Untuk MS & ROHS, jika tidak ada filter type, tampilkan semua (Material Spec. & ROHS)
+        // Untuk MS & ROHS
         if ($this->docType === 'MS & ROHS') {
             $typeParam = $this->getParamName('type');
             if (!isset($_GET[$typeParam]) || trim($_GET[$typeParam]) === '') {
-                // Default: tampilkan Material Spec. dan ROHS
                 $whereConditions[] = "(docu.doc_type = 'Material Spec.' OR docu.doc_type = 'ROHS')";
             }
-            // Jika ada filter type, akan di-handle di loop foreach di bawah
         }
         
         foreach ($this->filterConfig as $filterKey => $enabled) {
@@ -260,7 +257,7 @@ class LegacyFilterWrapper {
         if (isset($this->globalFilters[$filterKey])) {
             $filterData = $this->globalFilters[$filterKey];
             
-            // 🆕 DYNAMIC OPTIONS based on document type
+            // DYNAMIC OPTIONS based on document type
             if (isset($filterData['dynamic']) && $filterData['dynamic'] === true) {
                 if (isset($filterData['options_by_doctype'][$this->docType])) {
                     return [
@@ -290,7 +287,8 @@ class LegacyFilterWrapper {
             'category' => 'cat',
             'device' => 'device',
             'status' => 'status',
-            'type' => 'tipe'        // 🆕 type maps to 'tipe' parameter
+            'type' => 'tipe',
+            'language' => 'lang'  // ✅ TAMBAHKAN INI untuk language filter
         ];
         
         return isset($mapping[$filterKey]) ? $mapping[$filterKey] : $filterKey;
@@ -301,7 +299,8 @@ class LegacyFilterWrapper {
         if ($filterKey === 'section_prod') return 'section_prod';
         if ($filterKey === 'process') return 'process';
         if ($filterKey === 'category') return 'category';
-        if ($filterKey === 'type') return 'doc_type';    // 🆕 type maps to doc_type column
+        if ($filterKey === 'type') return 'doc_type';
+        if ($filterKey === 'language') return 'language';  // ✅ TAMBAHKAN INI
         return $filterKey;
     }
     
@@ -312,7 +311,6 @@ class LegacyFilterWrapper {
                $this->filterConfig['device'] === true;
     }
     
-    // 🆕 NEW METHOD: Get Filter Info untuk display di halaman
     public function getFilterInfo() {
         $info = [];
         
@@ -332,7 +330,6 @@ class LegacyFilterWrapper {
                 
                 // Get readable name/label
                 if ($filterKey === 'section_dept' || $filterKey === 'section_prod') {
-                    // Get section name from database
                     $sql = "SELECT sect_name FROM section WHERE id_section = '" 
                            . mysqli_real_escape_string($this->link, $value) . "'";
                     $result = mysqli_query($this->link, $sql);
@@ -344,7 +341,6 @@ class LegacyFilterWrapper {
                     }
                     
                 } elseif ($filterKey === 'device') {
-                    // Get device name from database
                     $sql = "SELECT name FROM device WHERE id_device = '" 
                            . mysqli_real_escape_string($this->link, $value) . "'";
                     $result = mysqli_query($this->link, $sql);
@@ -365,16 +361,17 @@ class LegacyFilterWrapper {
                     
                 } elseif ($filterKey === 'status') {
                     $info['status'] = $value;
-                    // Convert Secured -> Approved untuk display
                     $info['status_name'] = ($value === 'Secured') ? 'Approved' : $value;
                     
                 } elseif ($filterKey === 'type') {
-                    // 🆕 HANDLE TYPE
                     $info['tipe'] = $value;
                     $info['type_name'] = $value;
                     
+                } elseif ($filterKey === 'language') {  // ✅ TAMBAHKAN INI
+                    $info['lang'] = $value;
+                    $info['language_name'] = $value;
+                    
                 } else {
-                    // For other filters, just use the value
                     $info[$filterKey] = $value;
                     $info[$filterKey . '_name'] = $value;
                 }
