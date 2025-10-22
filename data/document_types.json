@@ -168,5 +168,21 @@
             "status": false,
             "category": true
         }
+    },
+    {
+        "id": "per",
+        "name": "PER",
+        "has_submenu": false,
+        "submenu": [],
+        "filter_config": {
+            "section_dept": false,
+            "section_prod": true,
+            "status": true,
+            "category": false,
+            "device": true,
+            "process": false
+        },
+        "use_custom_file": false,
+        "custom_file": ""
     }
 ]
