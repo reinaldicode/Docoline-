@@ -82,10 +82,11 @@ function getNotificationCounts($link, $nrp, $state, $docTypes) {
         
         if($state == 'Admin') {
             $sql = "SELECT COUNT(*) as count FROM docu WHERE doc_type='$type_escaped' AND 
-                    status IN ('Review', 'Pending')";
+                    status IN ('Review', 'Pending', 'Edited')";
         } elseif($state == 'Originator') {
+            // PERBAIKAN: Include status 'Edited' untuk Originator
             $sql = "SELECT COUNT(*) as count FROM docu WHERE doc_type='$type_escaped' AND 
-                    user_id='$nrp' AND status IN ('Review', 'Pending')";
+                    user_id='$nrp' AND status IN ('Review', 'Pending', 'Edited')";
         } elseif($state == 'Approver') {
             $sql = "SELECT COUNT(DISTINCT docu.no_drf) as count 
                     FROM docu
@@ -116,12 +117,13 @@ function getRecentNotifications($link, $nrp, $state, $limit = 10) {
     if($state == 'Admin') {
         $sql = "SELECT no_drf, no_doc, title, doc_type, status, tgl_upload, 
                 DATEDIFF(NOW(), tgl_upload) as days_passed
-                FROM docu WHERE status IN ('Review', 'Pending') 
+                FROM docu WHERE status IN ('Review', 'Pending', 'Edited') 
                 ORDER BY tgl_upload DESC LIMIT $limit";
     } elseif($state == 'Originator') {
+        // PERBAIKAN: Include status 'Edited' untuk Originator
         $sql = "SELECT no_drf, no_doc, title, doc_type, status, tgl_upload,
                 DATEDIFF(NOW(), tgl_upload) as days_passed
-                FROM docu WHERE user_id='$nrp' AND status IN ('Review', 'Pending')
+                FROM docu WHERE user_id='$nrp' AND status IN ('Review', 'Pending', 'Edited')
                 ORDER BY tgl_upload DESC LIMIT $limit";
     } elseif($state == 'Approver') {
         $sql = "SELECT DISTINCT docu.no_drf, docu.no_doc, docu.title, docu.doc_type, 
@@ -417,7 +419,7 @@ $(document).ready(function () {
 });
 </script>
 
-<h2>Manage Document</h2>
+<h2>My Document</h2>
 
 <form action="" method="GET" >
     <div class="col-sm-4">
@@ -435,8 +437,9 @@ $(document).ready(function () {
         <?php if ($state=='Admin'){ ?>
         <select name="status" class="form-control">
             <option value="-">--- Select Status ---</option>
-            <option <?php echo (isset($status) && $status == 'Review') ? 'selected' : 'selected'; ?> value="Review">Review</option>
+            <option <?php echo (isset($status) && $status == 'Review') ? 'selected' : ''; ?> value="Review">Review</option>
             <option <?php echo (isset($status) && $status == 'Pending') ? 'selected' : ''; ?> value="Pending">Pending</option>
+            <option <?php echo (isset($status) && $status == 'Edited') ? 'selected' : ''; ?> value="Edited">Edited</option>
             <option <?php echo (isset($status) && $status == 'Approved') ? 'selected' : ''; ?> value="Approved">Approved</option>
         </select>           
         <?php } ?>
@@ -470,7 +473,8 @@ if($state=='Admin') {
     $sql="select * from docu where status='$status' $sort order by no_drf";
 }
 elseif($state=='Originator') {
-    $sql="select * from docu where (docu.status='Review' or docu.status='Pending') $sort and user_id='$nrp' order by no_drf";
+    // PERBAIKAN CRITICAL: Tampilkan status Review, Pending, dan Edited untuk Originator
+    $sql="select * from docu where (docu.status='Review' or docu.status='Pending' or docu.status='Edited') $sort and user_id='$nrp' order by no_drf";
 }
 elseif($state=='Approver') {
     $sql="SELECT DISTINCT docu.* 
@@ -550,6 +554,10 @@ while($info = mysqli_fetch_array($res))
         echo 'style="background-color: #f8d7da;"'; // Red for overdue
     } elseif($dayx >= 1 && $info['status']=='Review') {
         echo 'style="background-color: #fff3cd;"'; // Yellow for urgent
+    } elseif($info['status']=='Pending') {
+        echo 'style="background-color: #fff3cd;"'; // Yellow for Pending
+    } elseif($info['status']=='Edited') {
+        echo 'style="background-color: #d1ecf1;"'; // Light blue for Edited
     }
 ?>>
     <td><?php echo $j; ?></td>
@@ -595,6 +603,8 @@ while($info = mysqli_fetch_array($res))
     <span class="label label-info"><?php } ?>
     <?php if ($info['status']=='Pending'){ ?>
     <span class="label label-warning"><?php } ?>
+    <?php if ($info['status']=='Edited'){ ?>
+    <span class="label label-primary"><?php } ?>
     <?php if ($info['status']=='Approved'){ ?>
     <span class="label label-success"><?php }?>
         <?php echo htmlspecialchars($info['status']);?>
@@ -619,7 +629,7 @@ while($info = mysqli_fetch_array($res))
     <span class="glyphicon glyphicon-play" ></span></a>
     <?php } } ?>
 
-    <?php if ($info['status']=='Pending' and ($state=='Originator' or $state='Admin')){ ?>
+    <?php if ($info['status']=='Pending' and ($state=='Originator' or $state=='Admin')){ ?>
     <button data-toggle="modal" data-target="#myModal" data-id="<?php echo $info['no_drf']?>" data-type="<?php echo htmlspecialchars($info['doc_type'])?>" data-nodoc="<?php echo htmlspecialchars($info['no_doc'])?>" data-title="<?php echo htmlspecialchars($info['title'])?>" data-lama="<?php echo htmlspecialchars($info['file'])?>"  class="btn btn-xs btn-warning upload-file">
     <span class="glyphicon glyphicon-upload"></span>
     Change Document</button>
