@@ -17,53 +17,92 @@ if (isset($_POST['upload'])) {
     }
 
     $nma_file = '';
+    $nma_file_master = '';
     
-    // --- Proses Upload File ---
+    // --- Proses Upload File Dokumen ---
     if (isset($_FILES['baru']) && $_FILES['baru']['error'] == UPLOAD_ERR_OK) {
         $tmp_file = $_FILES['baru']['tmp_name'];
         $nma_file = basename($_FILES['baru']['name']);
-        $target_dir = rtrim($type, '/') . '/';
+        
+        // Sanitize folder name
+        $safe_type = preg_replace('/[^A-Za-z0-9 _\-&]/', '', $type);
+        $safe_type = str_replace(' ', '_', $safe_type);
+        $target_dir = rtrim($safe_type, '/') . '/';
         
         if (!is_dir($target_dir)) {
             mkdir($target_dir, 0777, true);
         }
 
         if (!move_uploaded_file($tmp_file, $target_dir . $nma_file)) {
-             echo "ERROR - File Dokumen gagal di-upload.<br>";
+            die("ERROR - File Dokumen gagal di-upload.<br>");
+        }
+    }
+
+    // --- Proses Upload File Master (Optional) ---
+    if (isset($_FILES['masterbaru']) && $_FILES['masterbaru']['error'] == UPLOAD_ERR_OK) {
+        $tmp_file_master = $_FILES['masterbaru']['tmp_name'];
+        $nma_file_master = basename($_FILES['masterbaru']['name']);
+        
+        $safe_type = preg_replace('/[^A-Za-z0-9 _\-&]/', '', $type);
+        $safe_type = str_replace(' ', '_', $safe_type);
+        $target_dir_master = 'master_document/' . rtrim($safe_type, '/') . '/';
+        
+        if (!is_dir($target_dir_master)) {
+            mkdir($target_dir_master, 0777, true);
+        }
+
+        if (!move_uploaded_file($tmp_file_master, $target_dir_master . $nma_file_master)) {
+            echo "WARNING - File Master gagal di-upload.<br>";
         }
     }
 
     // Update status menjadi Review setelah upload file baru
     $new_status = 'Review';
 
-    // --- Update Database ---
+    // --- Update Database Dokumen ---
     $query_update_docu = "UPDATE docu SET status='$new_status'";
     if (!empty($nma_file)) {
         $query_update_docu .= ", file='" . mysqli_real_escape_string($link, $nma_file) . "'";
     }
+    if (!empty($nma_file_master)) {
+        $query_update_docu .= ", file_master='" . mysqli_real_escape_string($link, $nma_file_master) . "'";
+    }
     $query_update_docu .= " WHERE no_drf=$drf";
-    mysqli_query($link, $query_update_docu);
+    mysqli_query($link, $query_update_docu) or die("Error updating docu: " . mysqli_error($link));
 
-    // Reset status semua approver
-    $query_reset_rev = "UPDATE rev_doc SET status='Review', reason='', tgl_approve='-' WHERE id_doc=$drf";
-    mysqli_query($link, $query_reset_rev);
+    // ============================================================================
+    // PERUBAHAN UTAMA: HANYA RESET APPROVER YANG STATUS-NYA 'Pending' (yang suspend)
+    // Approver yang sudah 'Approved' TIDAK di-reset!
+    // ============================================================================
+    $query_reset_rev = "UPDATE rev_doc 
+                    SET status='Review', reason='', tgl_approve=NULL 
+                    WHERE id_doc=$drf AND status='Pending'";
+    mysqli_query($link, $query_reset_rev) or die("Error resetting pending approvers: " . mysqli_error($link));
 
-    // Ambil semua approver untuk notifikasi
-    $sql_approvers = "SELECT DISTINCT u.name, u.email 
-                      FROM rev_doc rd
-                      JOIN users u ON u.username = rd.nrp 
-                      WHERE rd.id_doc = $drf";
+    // Ambil approver yang perlu direview ulang (yang statusnya Pending sebelumnya)
+    $sql_pending_approvers = "SELECT DISTINCT u.name, u.email 
+                              FROM rev_doc rd
+                              JOIN users u ON u.username = rd.nrp 
+                              WHERE rd.id_doc = $drf AND rd.status='Review'";
     
-    $res_approvers = mysqli_query($link, $sql_approvers);
+    $res_pending = mysqli_query($link, $sql_pending_approvers);
     
     $approvers_to_notify = [];
-    if ($res_approvers && mysqli_num_rows($res_approvers) > 0) {
-        while ($data = mysqli_fetch_assoc($res_approvers)) {
+    if ($res_pending && mysqli_num_rows($res_pending) > 0) {
+        while ($data = mysqli_fetch_assoc($res_pending)) {
             $approvers_to_notify[] = $data;
         }
     }
 
-    // Kirim Email Notifikasi (jika diperlukan)
+    // Cek berapa approver yang masih Approved (tidak perlu review lagi)
+    $sql_still_approved = "SELECT COUNT(*) as approved_count 
+                           FROM rev_doc 
+                           WHERE id_doc=$drf AND status='Approved'";
+    $res_approved = mysqli_query($link, $sql_still_approved);
+    $row_approved = mysqli_fetch_assoc($res_approved);
+    $approved_count = $row_approved['approved_count'];
+
+    // Kirim Email Notifikasi ke approver yang perlu review ulang
     if (count($approvers_to_notify) > 0) {
         require 'PHPMailer/PHPMailerAutoload.php';
         $mail = new PHPMailer();
@@ -85,29 +124,44 @@ if (isset($_POST['upload'])) {
                           "The following document has been revised by the originator and requires your re-review:".
                           "<br/><br/><b>No. Document:</b> " . htmlspecialchars($nodoc) .
                           "<br/><b>Title:</b> " . htmlspecialchars($title) .
-                          "<br/><br/>Your previous decision has been reset. Please review the new version of the document.".
-                          "<br/>Please login into <a href='http://192.168.132.15/document'>Document Online System</a>. Thank You.";
+                          "<br/><br/><b>Note:</b> You previously suspended this document. Please review the revised version." .
+                          ($approved_count > 0 ? "<br/><b>Good News:</b> $approved_count approver(s) who already approved do NOT need to approve again!" : "") .
+                          "<br/><br/>Please login into <a href='http://192.168.132.15/document'>Document Online System</a>. Thank You.";
 
             if ($mail->send()) {
+                $message = "File changed successfully!\\n\\n";
+                $message .= "✓ Notified " . count($approvers_to_notify) . " approver(s) who need to re-review\\n";
+                if ($approved_count > 0) {
+                    $message .= "✓ $approved_count approver(s) who already approved do NOT need to approve again\\n";
+                }
+                $message .= "\\nStatus changed to Review.";
+                
                 echo "<script>
-                        alert('File changed successfully and notification sent to " . count($approvers_to_notify) . " approver(s)! Status changed to Review.');
+                        alert('$message');
                         document.location='my_doc.php?tipe=" . urlencode($type) . "&submit=Show';
                       </script>";
             } else {
                 echo "<script>
-                        alert('File changed successfully, but email failed to send! Error: ".addslashes($mail->ErrorInfo)."');
+                        alert('File changed successfully, but email failed to send!\\nError: ".addslashes($mail->ErrorInfo)."');
                         document.location='my_doc.php?tipe=" . urlencode($type) . "&submit=Show';
                       </script>";
             }
         } catch (Exception $e) {
             echo "<script>
-                    alert('File changed, but an error occurred during email sending. Error: ".$e->getMessage()."');
+                    alert('File changed, but an error occurred during email sending.\\nError: ".addslashes($e->getMessage())."');
                     document.location='my_doc.php?tipe=" . urlencode($type) . "&submit=Show';
                   </script>";
         }
     } else {
+        // Tidak ada approver yang perlu review ulang (semua sudah approved)
+        $message = "File changed successfully!\\n\\n";
+        if ($approved_count > 0) {
+            $message .= "All $approved_count approver(s) maintained their approval status.\\n";
+        }
+        $message .= "Status changed to Review.";
+        
         echo "<script>
-                alert('File changed successfully. Status changed to Review.');
+                alert('$message');
                 document.location='my_doc.php?tipe=" . urlencode($type) . "&submit=Show';
               </script>";
     }
@@ -125,15 +179,38 @@ if (isset($_POST['upload'])) {
     $sql_doc = "SELECT * FROM docu WHERE no_drf='$drf'";
     $res_doc = mysqli_query($link, $sql_doc);
     $doc_data = mysqli_fetch_assoc($res_doc);
+    
+    // Cek status approver
+    $sql_status = "SELECT 
+                    SUM(CASE WHEN status='Approved' THEN 1 ELSE 0 END) as approved_count,
+                    SUM(CASE WHEN status='Pending' THEN 1 ELSE 0 END) as pending_count,
+                    COUNT(*) as total_count
+                   FROM rev_doc WHERE id_doc=$drf";
+    $res_status = mysqli_query($link, $sql_status);
+    $status_data = mysqli_fetch_assoc($res_status);
     ?>
 
     <div class="row">
         <div class="col-xs-1"></div>
         <div class="col-xs-7 well well-lg">
             <h2>Change Document</h2>
+            
             <div class="alert alert-info">
                 <strong>Document:</strong> <?php echo htmlspecialchars($doc_data['no_doc']); ?> - <?php echo htmlspecialchars($doc_data['title']); ?>
             </div>
+            
+            <?php if ($status_data['approved_count'] > 0): ?>
+            <div class="alert alert-warning">
+                <span class="glyphicon glyphicon-info-sign"></span>
+                <strong>Smart Approval System:</strong><br/>
+                <?php echo $status_data['approved_count']; ?> approver(s) already approved this document.<br/>
+                When you upload the revised file:
+                <ul>
+                    <li>✓ Approvers who already approved will <strong>keep their approval</strong></li>
+                    <li>✗ Only approvers who suspended (<?php echo $status_data['pending_count']; ?>) will need to re-review</li>
+                </ul>
+            </div>
+            <?php endif; ?>
             
             <form action="" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="drf" value="<?php echo $drf; ?>">
@@ -142,18 +219,24 @@ if (isset($_POST['upload'])) {
                 <input type="hidden" name="title" value="<?php echo htmlspecialchars($doc_data['title']); ?>">
                 
                 <div class="form-group">
-                    <label>File Document (.pdf/.xlsx):</label>
-                    <input type="file" name="baru" class="form-control" required>
+                    <label>File Document (.pdf/.xlsx): <span class="text-danger">*</span></label>
+                    <input type="file" name="baru" class="form-control" required accept=".pdf,.xlsx">
+                    <small class="help-block">Current file: <strong><?php echo htmlspecialchars($doc_data['file']); ?></strong></small>
                 </div>
                 
                 <div class="form-group">
                     <label>File Master (.docx/.xlsx):</label>
-                    <input type="file" name="masterbaru" class="form-control">
+                    <input type="file" name="masterbaru" class="form-control" accept=".docx,.xlsx">
+                    <small class="help-block">Optional - for master document template</small>
                 </div>
                 
                 <div class="form-group">
-                    <input type="submit" name="upload" value="Update Document" class="btn btn-primary">
-                    <a href="edit_doc.php?drf=<?php echo $drf; ?>" class="btn btn-default">Kembali ke Edit</a>
+                    <button type="submit" name="upload" class="btn btn-primary">
+                        <span class="glyphicon glyphicon-upload"></span> Update Document
+                    </button>
+                    <a href="my_doc.php?tipe=<?php echo urlencode($type); ?>&submit=Show" class="btn btn-default">
+                        <span class="glyphicon glyphicon-arrow-left"></span> Cancel
+                    </a>
                 </div>
             </form>
         </div>
