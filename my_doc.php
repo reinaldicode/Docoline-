@@ -1,456 +1,721 @@
 <?php
-include 'header.php';
-include 'koneksi.php';
-extract($_REQUEST);
+// Error handling
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
 
-/**
- * ============================================================================
- * SECTION NORMALIZATION FUNCTION
- * ============================================================================
- */
-function normalizeSection($section) {
-    if (empty($section) || $section === '-') {
-        return $section;
+// Essential includes with error handling
+$required_files = ['header.php', 'koneksi.php'];
+foreach ($required_files as $file) {
+    if (file_exists($file)) {
+        include $file;
+    } else {
+        die("Error: Required file '$file' not found.");
     }
-    
-    $normalized = trim($section);
-    $normalized = preg_replace('/\s+section$/i', '', $normalized);
-    $normalized = preg_replace('/^section\s+/i', '', $normalized);
-    $normalized = preg_replace('/\s+/', ' ', $normalized);
-    
-    return trim($normalized);
 }
 
 /**
  * ============================================================================
- * LOAD DYNAMIC DOCUMENT TYPES FROM JSON
+ * CONFIGURATION & CACHING
  * ============================================================================
  */
-function loadDocumentTypes() {
-    $jsonFile = __DIR__ . '/data/document_types.json';
-    $docTypes = [];
+class DocumentConfig {
+    private static $docTypes = null;
+    private static $cacheFile = null;
     
-    if (file_exists($jsonFile)) {
-        $tmp = json_decode(file_get_contents($jsonFile), true);
-        if (is_array($tmp)) {
-            $is_assoc = array_keys($tmp) !== range(0, count($tmp)-1);
-            if ($is_assoc) {
-                foreach ($tmp as $catk => $items) {
-                    if (is_array($items)) {
-                        foreach ($items as $it) {
-                            if (is_string($it)) $docTypes[] = $it;
-                            elseif (is_array($it) && isset($it['name'])) $docTypes[] = $it['name'];
-                        }
-                    }
-                }
-            } else {
-                foreach ($tmp as $it) {
-                    if (is_string($it)) $docTypes[] = $it;
-                    elseif (is_array($it) && isset($it['name'])) $docTypes[] = $it['name'];
+    public static function getDocumentTypes() {
+        if (self::$docTypes !== null) {
+            return self::$docTypes;
+        }
+        
+        self::$cacheFile = __DIR__ . '/cache/doc_types.cache';
+        
+        // Check cache first (valid for 1 hour)
+        if (file_exists(self::$cacheFile) && (time() - filemtime(self::$cacheFile) < 3600)) {
+            $cached = @file_get_contents(self::$cacheFile);
+            if ($cached) {
+                self::$docTypes = json_decode($cached, true);
+                if (is_array(self::$docTypes) && !empty(self::$docTypes)) {
+                    return self::$docTypes;
                 }
             }
-            $docTypes = array_unique($docTypes);
         }
+        
+        // Load from JSON
+        $jsonFile = __DIR__ . '/data/document_types.json';
+        $docTypes = [];
+        
+        if (file_exists($jsonFile)) {
+            $content = @file_get_contents($jsonFile);
+            if ($content) {
+                $data = json_decode($content, true);
+                if (is_array($data)) {
+                    $docTypes = self::flattenDocTypes($data);
+                }
+            }
+        }
+        
+        // Fallback to defaults
+        if (empty($docTypes)) {
+            $docTypes = ['WI', 'Procedure', 'Form', 'Monitor Sample', 'MSDS', 'Material Spec', 'ROHS'];
+        }
+        
+        self::$docTypes = array_values(array_unique($docTypes));
+        
+        // Save to cache
+        self::saveCache();
+        
+        return self::$docTypes;
     }
     
-    if (empty($docTypes)) {
-        $docTypes = ['WI', 'Procedure', 'Form', 'Monitor Sample', 'MSDS', 'Material Spec', 'ROHS'];
+    private static function flattenDocTypes($data) {
+        $result = [];
+        
+        foreach ($data as $item) {
+            if (is_string($item)) {
+                $result[] = $item;
+            } elseif (is_array($item)) {
+                if (isset($item['name'])) {
+                    $result[] = $item['name'];
+                } else {
+                    $result = array_merge($result, self::flattenDocTypes($item));
+                }
+            }
+        }
+        
+        return $result;
     }
     
-    return $docTypes;
+    private static function saveCache() {
+        $cacheDir = dirname(self::$cacheFile);
+        if (!is_dir($cacheDir)) {
+            @mkdir($cacheDir, 0755, true);
+        }
+        @file_put_contents(self::$cacheFile, json_encode(self::$docTypes));
+    }
 }
 
 /**
  * ============================================================================
- * FUNGSI UNTUK MENGHITUNG NOTIFIKASI PER TIPE DOKUMEN
+ * DATABASE QUERY OPTIMIZER
  * ============================================================================
  */
-function getNotificationCounts($link, $nrp, $state, $docTypes) {
-    $counts = ['total' => 0, 'my_documents' => 0, 'to_review' => 0];
+class DocumentQuery {
+    private $link;
+    private $nrp;
+    private $state;
     
-    foreach($docTypes as $type) {
-        $counts[$type] = 0;
+    public function __construct($link, $nrp, $state) {
+        $this->link = $link;
+        $this->nrp = mysqli_real_escape_string($link, $nrp);
+        $this->state = $state;
     }
     
-    foreach($docTypes as $type) {
-        $type_escaped = mysqli_real_escape_string($link, $type);
+    /**
+     * Get notification counts with single optimized query
+     */
+    public function getNotificationCounts($docTypes) {
+        $counts = [
+            'total' => 0,
+            'my_documents' => 0,
+            'to_review' => 0
+        ];
         
-        if($state == 'Admin') {
-            $sql = "SELECT COUNT(*) as count FROM docu WHERE doc_type='$type_escaped' AND 
-                    status IN ('Review', 'Pending', 'Edited')";
-        } elseif($state == 'Originator') {
-            $sql = "SELECT COUNT(*) as count FROM docu WHERE doc_type='$type_escaped' AND 
-                    user_id='$nrp' AND status IN ('Review', 'Pending', 'Edited')";
-        } elseif($state == 'Approver') {
-            $sql = "SELECT COUNT(DISTINCT no_drf) as count FROM (
-                        (SELECT docu.no_drf
-                         FROM docu
-                         INNER JOIN rev_doc ON docu.no_drf=rev_doc.id_doc
-                         WHERE docu.doc_type='$type_escaped' 
-                         AND docu.status='Review' 
-                         AND rev_doc.status='Review' 
-                         AND rev_doc.nrp='$nrp')
+        foreach($docTypes as $type) {
+            $counts[$type] = 0;
+        }
+        
+        try {
+            if($this->state == 'Admin') {
+                $sql = "SELECT doc_type, COUNT(*) as count 
+                        FROM docu 
+                        WHERE status IN ('Review', 'Pending', 'Edited')
+                        GROUP BY doc_type";
+                
+                $result = mysqli_query($this->link, $sql);
+                if ($result) {
+                    while($row = mysqli_fetch_assoc($result)) {
+                        $type = $row['doc_type'];
+                        $count = (int)$row['count'];
+                        if (isset($counts[$type])) {
+                            $counts[$type] = $count;
+                            $counts['total'] += $count;
+                        }
+                    }
+                    mysqli_free_result($result);
+                }
+            } 
+            elseif($this->state == 'Originator') {
+                $sql = "SELECT doc_type, COUNT(*) as count 
+                        FROM docu 
+                        WHERE user_id='{$this->nrp}' 
+                        AND status IN ('Review', 'Pending', 'Edited')
+                        GROUP BY doc_type";
+                
+                $result = mysqli_query($this->link, $sql);
+                if ($result) {
+                    while($row = mysqli_fetch_assoc($result)) {
+                        $type = $row['doc_type'];
+                        $count = (int)$row['count'];
+                        if (isset($counts[$type])) {
+                            $counts[$type] = $count;
+                            $counts['total'] += $count;
+                        }
+                    }
+                    mysqli_free_result($result);
+                }
+            } 
+            elseif($this->state == 'Approver') {
+                // Optimized single query for Approver
+                $sql = "
+                    SELECT 'to_review' as type, COUNT(DISTINCT docu.no_drf) as count
+                    FROM docu
+                    INNER JOIN rev_doc ON docu.no_drf = rev_doc.id_doc
+                    WHERE docu.status = 'Review' 
+                    AND rev_doc.status = 'Review' 
+                    AND rev_doc.nrp = '{$this->nrp}'
+                    
+                    UNION ALL
+                    
+                    SELECT 'my_documents' as type, COUNT(*) as count
+                    FROM docu 
+                    WHERE user_id = '{$this->nrp}' 
+                    AND status IN ('Review', 'Pending', 'Edited')
+                    
+                    UNION ALL
+                    
+                    SELECT doc_type as type, COUNT(*) as count
+                    FROM (
+                        SELECT DISTINCT docu.no_drf, docu.doc_type
+                        FROM docu
+                        INNER JOIN rev_doc ON docu.no_drf = rev_doc.id_doc
+                        WHERE docu.status = 'Review' 
+                        AND rev_doc.status = 'Review' 
+                        AND rev_doc.nrp = '{$this->nrp}'
+                        
                         UNION
-                        (SELECT no_drf
-                         FROM docu 
-                         WHERE doc_type='$type_escaped'
-                         AND user_id='$nrp' 
-                         AND status IN ('Review', 'Pending', 'Edited'))
-                    ) as combined";
+                        
+                        SELECT no_drf, doc_type
+                        FROM docu 
+                        WHERE user_id = '{$this->nrp}' 
+                        AND status IN ('Review', 'Pending', 'Edited')
+                    ) as combined
+                    GROUP BY doc_type
+                ";
+                
+                $result = mysqli_query($this->link, $sql);
+                if ($result) {
+                    while($row = mysqli_fetch_assoc($result)) {
+                        $type = $row['type'];
+                        $count = (int)$row['count'];
+                        
+                        if ($type == 'to_review' || $type == 'my_documents') {
+                            $counts[$type] = $count;
+                        } elseif (isset($counts[$type])) {
+                            $counts[$type] = $count;
+                            $counts['total'] += $count;
+                        }
+                    }
+                    mysqli_free_result($result);
+                }
+            }
+        } catch (Exception $e) {
+            error_log("Error in getNotificationCounts: " . $e->getMessage());
         }
         
-        $result = mysqli_query($link, $sql);
-        $row = mysqli_fetch_assoc($result);
-        $counts[$type] = (int)$row['count'];
-        $counts['total'] += $counts[$type];
+        return $counts;
     }
     
-    // Hitung secara terpisah untuk Approver
-    if($state == 'Approver') {
-        // Count documents to review
-        $sql_review = "SELECT COUNT(DISTINCT docu.no_drf) as count 
-                       FROM docu
-                       INNER JOIN rev_doc ON docu.no_drf=rev_doc.id_doc
-                       WHERE docu.status='Review' 
-                       AND rev_doc.status='Review' 
-                       AND rev_doc.nrp='$nrp'";
-        $result_review = mysqli_query($link, $sql_review);
-        $row_review = mysqli_fetch_assoc($result_review);
-        $counts['to_review'] = (int)$row_review['count'];
+    /**
+     * Get recent notifications (limited)
+     */
+    public function getRecentNotifications($limit = 5) {
+        $notifications = [];
+        $limit = (int)$limit;
         
-        // Count my documents
-        $sql_my = "SELECT COUNT(*) as count 
-                   FROM docu 
-                   WHERE user_id='$nrp' 
-                   AND status IN ('Review', 'Pending', 'Edited')";
-        $result_my = mysqli_query($link, $sql_my);
-        $row_my = mysqli_fetch_assoc($result_my);
-        $counts['my_documents'] = (int)$row_my['count'];
+        try {
+            if($this->state == 'Admin') {
+                $sql = "SELECT no_drf, no_doc, title, doc_type, status, tgl_upload, 
+                        DATEDIFF(NOW(), tgl_upload) as days_passed
+                        FROM docu 
+                        WHERE status IN ('Review', 'Pending', 'Edited') 
+                        ORDER BY tgl_upload DESC 
+                        LIMIT $limit";
+            } 
+            elseif($this->state == 'Originator') {
+                $sql = "SELECT no_drf, no_doc, title, doc_type, status, tgl_upload,
+                        DATEDIFF(NOW(), tgl_upload) as days_passed
+                        FROM docu 
+                        WHERE user_id = '{$this->nrp}' 
+                        AND status IN ('Review', 'Pending', 'Edited')
+                        ORDER BY tgl_upload DESC 
+                        LIMIT $limit";
+            } 
+            elseif($this->state == 'Approver') {
+                $sql = "SELECT no_drf, no_doc, title, doc_type, status, tgl_upload,
+                        DATEDIFF(NOW(), tgl_upload) as days_passed
+                        FROM (
+                            SELECT DISTINCT docu.no_drf, docu.no_doc, docu.title, 
+                                   docu.doc_type, docu.status, docu.tgl_upload
+                            FROM docu
+                            INNER JOIN rev_doc ON docu.no_drf = rev_doc.id_doc
+                            WHERE docu.status = 'Review' 
+                            AND rev_doc.status = 'Review' 
+                            AND rev_doc.nrp = '{$this->nrp}'
+                            
+                            UNION
+                            
+                            SELECT no_drf, no_doc, title, doc_type, status, tgl_upload
+                            FROM docu 
+                            WHERE user_id = '{$this->nrp}' 
+                            AND status IN ('Review', 'Pending', 'Edited')
+                        ) as combined
+                        ORDER BY tgl_upload DESC 
+                        LIMIT $limit";
+            }
+            
+            $result = mysqli_query($this->link, $sql);
+            if ($result) {
+                while($row = mysqli_fetch_assoc($result)) {
+                    $notifications[] = $row;
+                }
+                mysqli_free_result($result);
+            }
+        } catch (Exception $e) {
+            error_log("Error in getRecentNotifications: " . $e->getMessage());
+        }
+        
+        return $notifications;
     }
     
-    return $counts;
+    /**
+     * Get documents with optimized query
+     */
+    public function getDocuments($tipe = '-', $status = '') {
+        $typeFilter = '';
+        if($tipe != '-') {
+            $tipe_escaped = mysqli_real_escape_string($this->link, $tipe);
+            $typeFilter = "AND doc_type = '$tipe_escaped'";
+        }
+        
+        try {
+            if($this->state == 'Admin') {
+                if(empty($status) || $status == '-') {
+                    $sql = "SELECT * FROM docu 
+                            WHERE status IN ('Review', 'Pending', 'Edited') 
+                            $typeFilter 
+                            ORDER BY no_drf DESC";
+                } else {
+                    $status_escaped = mysqli_real_escape_string($this->link, $status);
+                    $sql = "SELECT * FROM docu 
+                            WHERE status = '$status_escaped' 
+                            $typeFilter 
+                            ORDER BY no_drf DESC";
+                }
+                
+                return mysqli_query($this->link, $sql);
+            }
+            elseif($this->state == 'Originator') {
+                $sql = "SELECT * FROM docu 
+                        WHERE user_id = '{$this->nrp}' 
+                        AND status IN ('Review', 'Pending', 'Edited') 
+                        $typeFilter 
+                        ORDER BY no_drf DESC";
+                
+                return mysqli_query($this->link, $sql);
+            }
+            elseif($this->state == 'Approver') {
+                $results = [];
+                
+                // Documents to review
+                $sql_review = "SELECT DISTINCT docu.*
+                               FROM docu
+                               INNER JOIN rev_doc ON docu.no_drf = rev_doc.id_doc
+                               WHERE docu.status = 'Review' 
+                               AND rev_doc.status = 'Review' 
+                               AND rev_doc.nrp = '{$this->nrp}'
+                               $typeFilter
+                               ORDER BY docu.no_drf DESC";
+                
+                $results['to_review'] = mysqli_query($this->link, $sql_review);
+                
+                // My documents
+                $sql_my = "SELECT * FROM docu 
+                           WHERE user_id = '{$this->nrp}' 
+                           AND status IN ('Review', 'Pending', 'Edited')
+                           $typeFilter
+                           ORDER BY no_drf DESC";
+                
+                $results['my_documents'] = mysqli_query($this->link, $sql_my);
+                
+                return $results;
+            }
+        } catch (Exception $e) {
+            error_log("Error in getDocuments: " . $e->getMessage());
+        }
+        
+        return false;
+    }
 }
 
 /**
  * ============================================================================
- * FUNGSI UNTUK MENDAPATKAN NOTIFIKASI TERBARU
+ * UTILITY FUNCTIONS
  * ============================================================================
  */
-function getRecentNotifications($link, $nrp, $state, $limit = 10) {
-    $notifications = array();
+function calculateDaysPassed($uploadDate) {
+    $timestamp = strtotime($uploadDate);
+    if ($timestamp === false) return 0;
     
-    if($state == 'Admin') {
-        $sql = "SELECT no_drf, no_doc, title, doc_type, status, tgl_upload, 
-                DATEDIFF(NOW(), tgl_upload) as days_passed
-                FROM docu WHERE status IN ('Review', 'Pending', 'Edited') 
-                ORDER BY tgl_upload DESC LIMIT $limit";
-    } elseif($state == 'Originator') {
-        $sql = "SELECT no_drf, no_doc, title, doc_type, status, tgl_upload,
-                DATEDIFF(NOW(), tgl_upload) as days_passed
-                FROM docu WHERE user_id='$nrp' AND status IN ('Review', 'Pending', 'Edited')
-                ORDER BY tgl_upload DESC LIMIT $limit";
-    } elseif($state == 'Approver') {
-        $sql = "SELECT DISTINCT no_drf, no_doc, title, doc_type, status, tgl_upload,
-                DATEDIFF(NOW(), tgl_upload) as days_passed
-                FROM (
-                    (SELECT docu.no_drf, docu.no_doc, docu.title, docu.doc_type, 
-                            docu.status, docu.tgl_upload
-                     FROM docu
-                     INNER JOIN rev_doc ON docu.no_drf=rev_doc.id_doc
-                     WHERE docu.status='Review' 
-                     AND rev_doc.status='Review' 
-                     AND rev_doc.nrp='$nrp')
-                    UNION
-                    (SELECT no_drf, no_doc, title, doc_type, status, tgl_upload
-                     FROM docu 
-                     WHERE user_id='$nrp' 
-                     AND status IN ('Review', 'Pending', 'Edited'))
-                ) as combined
-                ORDER BY tgl_upload DESC 
-                LIMIT $limit";
-    }
-    
-    $result = mysqli_query($link, $sql);
-    while($row = mysqli_fetch_assoc($result)) {
-        $notifications[] = $row;
-    }
-    
-    return $notifications;
+    $days = floor((time() - $timestamp) / 86400);
+    return max(0, $days);
 }
 
-// Load dynamic document types
-$docTypes = loadDocumentTypes();
-
-// Ambil data notifikasi
-$notifCounts = getNotificationCounts($link, $nrp, $state, $docTypes);
-$recentNotifications = getRecentNotifications($link, $nrp, $state);
-
-// ✅ AUTO SHOW: Jika ada notifikasi dan belum submit, otomatis tampilkan semua dokumen
-$autoShow = false;
-if($notifCounts['total'] > 0 && !isset($_GET['submit'])) {
-    $autoShow = true;
-    $_GET['submit'] = 'Show';
-    $_GET['tipe'] = '-'; // Tampilkan semua tipe
-    if($state == 'Admin') {
-        $_GET['status'] = 'Review'; // Default status untuk Admin
+function getRowClass($info) {
+    $days = calculateDaysPassed($info['tgl_upload']);
+    
+    if($days >= 3 && $info['status'] == 'Review') {
+        return 'danger';
+    } elseif($days >= 1 && $info['status'] == 'Review') {
+        return 'warning';
+    } elseif($info['status'] == 'Pending') {
+        return 'warning';
+    } elseif($info['status'] == 'Edited') {
+        return 'info';
     }
+    
+    return '';
+}
+
+function getDocumentPath($info) {
+    $doc_type = $info['doc_type'];
+    $safe_type = preg_replace('/[^A-Za-z0-9 _\-&]/', '', $doc_type);
+    $safe_type = str_replace(' ', '_', $safe_type);
+    
+    return ($info['no_drf'] > 12967) ? $safe_type : "document";
+}
+
+function escapeHtml($str) {
+    return htmlspecialchars($str ?? '', ENT_QUOTES, 'UTF-8');
+}
+
+/**
+ * ============================================================================
+ * RENDER FUNCTIONS
+ * ============================================================================
+ */
+function renderTableRow($info, $nrp, $state, $tipe, $section_type, $index) {
+    $days = calculateDaysPassed($info['tgl_upload']);
+    $is_doc_originator = ($info['user_id'] == $nrp);
+    $rowClass = getRowClass($info);
+    $docPath = getDocumentPath($info);
+    
+    // Pre-escape values
+    $esc = [
+        'tgl_upload' => escapeHtml($info['tgl_upload']),
+        'no_drf' => escapeHtml($info['no_drf']),
+        'no_doc' => escapeHtml($info['no_doc']),
+        'no_rev' => escapeHtml($info['no_rev']),
+        'title' => escapeHtml($info['title']),
+        'process' => escapeHtml($info['process']),
+        'section' => escapeHtml($info['section']),
+        'doc_type' => escapeHtml($info['doc_type']),
+        'rev_to' => escapeHtml($info['rev_to']),
+        'status' => escapeHtml($info['status']),
+        'file' => escapeHtml($info['file']),
+        'device' => escapeHtml($info['device'] ?? ''),
+    ];
+    
+    $url = [
+        'no_doc' => urlencode($info['no_doc']),
+        'title' => urlencode($info['title']),
+        'doc_type' => urlencode($info['doc_type']),
+        'section' => urlencode($info['section']),
+        'device' => urlencode($info['device'] ?? ''),
+    ];
+    
+    ?>
+    <tr <?php if($rowClass) echo 'class="' . $rowClass . '"'; ?>>
+        <td><?php echo $index; ?></td>
+        <td><?php echo $esc['tgl_upload']; ?></td>
+        <td><?php echo $esc['no_drf']; ?></td>
+        <td><?php echo $esc['no_doc']; ?></td>
+        <td><?php echo $esc['no_rev']; ?></td>
+        <td>
+            <a href="<?php echo $docPath; ?>/<?php echo $esc['file']; ?>" target="_blank">
+                <?php echo $esc['title']; ?>
+            </a>
+        </td>
+        <td><?php echo $esc['process']; ?></td>
+        <td><?php echo $esc['section']; ?></td>
+        <td><?php echo $esc['doc_type']; ?></td>
+        <td><?php echo $esc['rev_to']; ?></td>
+        <td>
+            <?php echo $days; ?>
+            <?php if ($days >= 1 && $info['status'] == 'Review' && ($state == 'Admin' || $is_doc_originator)): ?>
+                <a href="reminder.php?drf=<?php echo $info['no_drf']; ?>&type=<?php echo $url['doc_type']; ?>&nodoc=<?php echo $url['no_doc']; ?>&title=<?php echo $url['title']; ?>" 
+                   class="btn btn-xs btn-warning">
+                    <span class="glyphicon glyphicon-envelope"></span> Reminder <strong><?php echo (int)$info['reminder']; ?>x</strong>
+                </a>
+            <?php endif; ?>
+        </td>
+        <td>
+            <?php 
+            $statusClass = 'success';
+            if($info['status'] == 'Review') $statusClass = 'info';
+            elseif($info['status'] == 'Pending') $statusClass = 'warning';
+            elseif($info['status'] == 'Edited') $statusClass = 'primary';
+            ?>
+            <span class="label label-<?php echo $statusClass; ?>">
+                <?php echo $esc['status']; ?>
+            </span>
+        </td>
+        <td class="action-buttons">
+            <a href="detail.php?drf=<?php echo $info['no_drf']; ?>&no_doc=<?php echo $url['no_doc']; ?>" 
+               class="btn btn-xs btn-info" title="View Detail">
+                <span class="glyphicon glyphicon-search"></span>
+            </a>
+            <a href="radf.php?drf=<?php echo $info['no_drf']; ?>&section=<?php echo $url['section']; ?>" 
+               class="btn btn-xs btn-info" title="View RADF">
+                <span class="glyphicon glyphicon-eye-open"></span>
+            </a>
+            <a href="lihat_approver.php?drf=<?php echo $info['no_drf']; ?>&nodoc=<?php echo $url['no_doc']; ?>&title=<?php echo $url['title']; ?>&type=<?php echo $url['doc_type']; ?>" 
+               class="btn btn-xs btn-info" title="View Approver">
+                <span class="glyphicon glyphicon-user"></span>
+            </a>
+            
+            <?php if($section_type == 'reviewer' && !$is_doc_originator): ?>
+                <a href="approve.php?drf=<?php echo $info['no_drf']; ?>&device=<?php echo $url['device']; ?>&no_doc=<?php echo $url['no_doc']; ?>&title=<?php echo $url['title']; ?>&tipe=<?php echo urlencode($tipe); ?>" 
+                   class="btn btn-xs btn-success" title="Approve">
+                    <span class="glyphicon glyphicon-thumbs-up"></span>
+                </a>
+                <a href="pending.php?drf=<?php echo $info['no_drf']; ?>&no_doc=<?php echo $url['no_doc']; ?>&type=<?php echo $url['doc_type']; ?>" 
+                   class="btn btn-xs btn-warning" title="Suspend">
+                    <span class="glyphicon glyphicon-warning-sign"></span>
+                </a>
+            <?php elseif($section_type == 'originator' || $state == 'Originator' || $state == 'Admin'): ?>
+                <?php if ($state == 'Admin' || ($is_doc_originator && $info['status'] != "Approved")): ?>
+                    <a href="edit_doc.php?drf=<?php echo $info['no_drf']; ?>" 
+                       class="btn btn-xs btn-primary" title="Edit">
+                        <span class="glyphicon glyphicon-pencil"></span>
+                    </a>
+                    <a href="del_doc.php?drf=<?php echo $info['no_drf']; ?>" 
+                       class="btn btn-xs btn-danger" 
+                       onclick="return confirm('Delete document <?php echo $esc['no_doc']; ?>?')" 
+                       title="Delete">
+                        <span class="glyphicon glyphicon-remove"></span>
+                    </a>
+                    
+                    <?php if ($info['status'] == 'Approved'): ?>
+                        <a data-toggle="modal" data-target="#myModal2" 
+                           data-id="<?php echo $info['no_drf']; ?>" 
+                           data-lama="<?php echo $esc['file']; ?>" 
+                           data-type="<?php echo $esc['doc_type']; ?>" 
+                           data-status="<?php echo $esc['status']; ?>" 
+                           data-rev="<?php echo $esc['rev_to']; ?>" 
+                           class="btn btn-xs btn-success sec-file" title="Secure Document">
+                            <span class="glyphicon glyphicon-play"></span>
+                        </a>
+                    <?php endif; ?>
+                <?php endif; ?>
+                
+                <?php if ($info['status'] == 'Pending' && ($is_doc_originator || $state == 'Admin')): ?>
+                    <button data-toggle="modal" data-target="#myModal" 
+                            data-id="<?php echo $info['no_drf']; ?>" 
+                            data-type="<?php echo $esc['doc_type']; ?>" 
+                            data-nodoc="<?php echo $esc['no_doc']; ?>" 
+                            data-title="<?php echo $esc['title']; ?>" 
+                            data-lama="<?php echo $esc['file']; ?>" 
+                            class="btn btn-xs btn-warning upload-file">
+                        <span class="glyphicon glyphicon-upload"></span> Change Document
+                    </button>
+                <?php endif; ?>
+            <?php endif; ?>
+        </td>
+    </tr>
+    <?php
+}
+
+function renderDocumentTable($result, $nrp, $state, $tipe, $section_type = '') {
+    if (!$result || mysqli_num_rows($result) == 0) {
+        echo '<div class="empty-state">
+                <span class="glyphicon glyphicon-folder-open" style="font-size: 48px; color: #ccc;"></span>
+                <h4>No Documents Found</h4>
+                <p>No documents match your criteria.</p>
+              </div>';
+        return;
+    }
+    ?>
+    <div class="table-responsive">
+        <table class="table table-hover table-condensed table-striped">
+            <thead class="bg-info">
+                <tr>
+                    <th width="40">No</th>
+                    <th width="100">Date</th>
+                    <th width="80">No. DRF</th>
+                    <th width="150">No Document</th>
+                    <th width="50">Rev.</th>
+                    <th>Title</th>
+                    <th width="100">Process</th>
+                    <th width="100">Section</th>
+                    <th width="100">Type</th>
+                    <th width="100">Review To</th>
+                    <th width="120">Days</th>
+                    <th width="80">Status</th>
+                    <th width="200">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php 
+                $index = 1;
+                while($info = mysqli_fetch_assoc($result)): 
+                    renderTableRow($info, $nrp, $state, $tipe, $section_type, $index);
+                    $index++;
+                endwhile;
+                ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+}
+
+// ============================================================================
+// MAIN EXECUTION
+// ============================================================================
+
+// Get request parameters
+$tipe = $_GET['tipe'] ?? '-';
+$status = $_GET['status'] ?? '';
+$submit = $_GET['submit'] ?? '';
+
+// Initialize
+$docTypes = DocumentConfig::getDocumentTypes();
+$docQuery = new DocumentQuery($link, $nrp, $state);
+
+// Get notification counts
+$notifCounts = $docQuery->getNotificationCounts($docTypes);
+$recentNotifications = $docQuery->getRecentNotifications(5);
+
+// Auto show documents if there are notifications and no manual submit
+$autoShow = false;
+if($notifCounts['total'] > 0 && empty($submit)) {
+    $autoShow = true;
+    $submit = 'Show';
+    $tipe = '-';
 }
 
 ?>
 
 <style>
-.notification-badge {
-    position: relative;
-    display: inline-block;
-}
+.bg-info { background-color: #d9edf7; }
+.danger { background-color: #f8d7da; }
+.warning { background-color: #fff3cd; }
+.info { background-color: #d1ecf1; }
 
+.notification-badge { position: relative; display: inline-block; }
 .notification-count {
-    position: absolute;
-    top: -8px;
-    right: -8px;
-    background: #dc3545;
-    color: white;
-    border-radius: 50%;
-    width: 20px;
-    height: 20px;
-    font-size: 11px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    animation: pulse 2s infinite;
-    z-index: 1000;
+    position: absolute; top: -8px; right: -8px;
+    background: #dc3545; color: white; border-radius: 50%;
+    width: 20px; height: 20px; font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: bold; animation: pulse 2s infinite;
 }
 
 @keyframes pulse {
-    0% { transform: scale(1); }
+    0%, 100% { transform: scale(1); }
     50% { transform: scale(1.1); }
-    100% { transform: scale(1); }
 }
 
 .notification-panel {
-    position: fixed;
-    top: 70px;
-    right: 20px;
-    width: 350px;
-    max-height: 400px;
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-    z-index: 1050;
-    display: none;
-    border: 1px solid #dee2e6;
+    position: fixed; top: 70px; right: 20px; width: 350px;
+    max-height: 400px; background: white; border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15); z-index: 1050;
+    display: none; border: 1px solid #dee2e6;
 }
 
 .notification-header {
-    padding: 15px;
-    border-bottom: 1px solid #dee2e6;
-    background: #f8f9fa;
-    border-radius: 8px 8px 0 0;
+    padding: 15px; border-bottom: 1px solid #dee2e6;
+    background: #f8f9fa; border-radius: 8px 8px 0 0;
 }
 
-.notification-body {
-    max-height: 300px;
-    overflow-y: auto;
-}
+.notification-body { max-height: 300px; overflow-y: auto; }
 
 .notification-item {
-    padding: 12px 15px;
-    border-bottom: 1px solid #f1f3f4;
-    cursor: pointer;
-    transition: background-color 0.2s;
+    padding: 12px 15px; border-bottom: 1px solid #f1f3f4;
+    cursor: pointer; transition: background-color 0.2s;
 }
 
-.notification-item:hover {
-    background-color: #f8f9fa;
-}
-
-.notification-item.urgent {
-    background-color: #fff3cd;
-    border-left: 3px solid #ffc107;
-}
-
-.notification-item.overdue {
-    background-color: #f8d7da;
-    border-left: 3px solid #dc3545;
-}
+.notification-item:hover { background-color: #f8f9fa; }
+.notification-item.urgent { background-color: #fff3cd; border-left: 3px solid #ffc107; }
+.notification-item.overdue { background-color: #f8d7da; border-left: 3px solid #dc3545; }
 
 .notification-summary {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    padding: 15px;
-    border-radius: 8px;
-    margin-bottom: 20px;
-    max-height: 400px;
-    overflow-y: auto;
+    color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px;
 }
 
-.summary-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-    padding: 8px;
-    border-radius: 4px;
-    transition: background 0.2s;
-}
-
-.summary-item:last-child {
-    margin-bottom: 0;
-}
-
-.summary-item:hover {
-    background: rgba(255, 255, 255, 0.1);
-}
-
-.summary-link {
-    text-decoration: none;
-    color: white;
-    display: block;
-}
-
-.summary-link:hover {
-    color: white;
-    text-decoration: none;
-}
-
-.dropdown-with-badge {
-    position: relative;
-}
-
-.dropdown-badge {
-    position: absolute;
-    top: 5px;
-    right: 25px;
-    background: #dc3545;
-    color: white;
-    border-radius: 10px;
-    padding: 2px 6px;
-    font-size: 10px;
-    font-weight: bold;
-    z-index: 10;
-}
-
-.auto-refresh-indicator {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    background: #28a745;
-    color: white;
-    padding: 8px 15px;
-    border-radius: 20px;
-    font-size: 12px;
-    display: none;
-}
-
-/* STYLING UNTUK PEMISAHAN SECTION - SIMPLE & ELEGANT */
 .section-header {
-    background: #fff;
-    border-left: 4px solid #667eea;
-    padding: 12px 20px;
-    margin: 30px 0 15px 0;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-    border-radius: 4px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    background: #fff; border-left: 4px solid #667eea;
+    padding: 12px 20px; margin: 30px 0 15px 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08); border-radius: 4px;
+    display: flex; justify-content: space-between; align-items: center;
 }
 
-.section-header.my-docs {
-    border-left-color: #28a745;
-}
+.section-header.my-docs { border-left-color: #28a745; }
 
 .section-header h3 {
-    margin: 0;
-    font-size: 18px;
-    font-weight: 600;
-    color: #333;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.section-header .glyphicon {
-    color: #667eea;
-}
-
-.section-header.my-docs .glyphicon {
-    color: #28a745;
+    margin: 0; font-size: 18px; font-weight: 600;
+    color: #333; display: flex; align-items: center; gap: 10px;
 }
 
 .section-badge {
-    background: #f8f9fa;
-    color: #666;
-    padding: 4px 12px;
-    border-radius: 12px;
-    font-size: 13px;
-    font-weight: 600;
-}
-
-.table-container {
-    background: white;
-    border-radius: 4px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-    overflow: hidden;
-    margin-bottom: 25px;
+    background: #f8f9fa; color: #666;
+    padding: 4px 12px; border-radius: 12px;
+    font-size: 13px; font-weight: 600;
 }
 
 .empty-state {
-    text-align: center;
-    padding: 50px 20px;
-    color: #999;
-    background: #fafafa;
-    border-radius: 4px;
-    margin-bottom: 25px;
+    text-align: center; padding: 50px 20px; color: #999;
+    background: #fafafa; border-radius: 4px; margin-bottom: 25px;
 }
 
-.empty-state .glyphicon {
-    font-size: 40px;
-    margin-bottom: 12px;
-    opacity: 0.3;
-}
+.action-buttons { white-space: nowrap; }
+.action-buttons .btn { margin: 2px; }
 
-.empty-state h4 {
-    color: #666;
-    font-size: 16px;
-    margin: 10px 0 5px 0;
-}
-
-.empty-state p {
-    font-size: 14px;
-    margin: 0;
-}
+.table-responsive { margin-bottom: 15px; overflow-x: auto; }
+.table { margin-bottom: 0; }
+.table > thead > tr > th { white-space: nowrap; }
 </style>
 
 <div id="profile">
-<div class="alert alert-info" role="alert">
-    <b id="welcome">Welcome : <i><?php echo htmlspecialchars($name); ?>, anda login sebagai <?php echo htmlspecialchars($state);?></i></b>
-    
-    <!-- Notification Bell -->
-    <div style="float: right;">
-        <button class="btn btn-outline-primary notification-badge" id="notificationBell" title="Notifications">
-            <span class="glyphicon glyphicon-bell"></span>
-            <?php if($notifCounts['total'] > 0): ?>
-            <span class="notification-count" id="totalNotifications"><?php echo $notifCounts['total']; ?></span>
-            <?php endif; ?>
-        </button>
+    <div class="alert alert-info">
+        <b>Welcome: <i><?php echo escapeHtml($name); ?>, <?php echo escapeHtml($state); ?></i></b>
+        
+        <div style="float: right;">
+            <button class="btn btn-outline-primary notification-badge" id="notificationBell" type="button">
+                <span class="glyphicon glyphicon-bell"></span>
+                <?php if($notifCounts['total'] > 0): ?>
+                <span class="notification-count"><?php echo $notifCounts['total']; ?></span>
+                <?php endif; ?>
+            </button>
+        </div>
     </div>
 </div>
-</div>
 
-<!-- Notification Summary Dashboard (SIMPLE VERSION) -->
 <?php if($notifCounts['total'] > 0): ?>
 <div class="notification-summary">
-    <h5 style="margin: 0 0 15px 0;"><span class="glyphicon glyphicon-dashboard"></span> Quick Overview</h5>
+    <h5 style="margin: 0 0 15px 0;">
+        <span class="glyphicon glyphicon-dashboard"></span> Quick Overview
+    </h5>
     
     <?php if($state == 'Approver'): ?>
     <div style="display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap;">
         <div style="flex: 1; background: rgba(255,255,255,0.2); padding: 12px 15px; border-radius: 6px; min-width: 180px;">
-            <div style="font-size: 11px; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.5px;">To Review</div>
+            <div style="font-size: 11px; opacity: 0.85; text-transform: uppercase;">To Review</div>
             <div style="font-size: 24px; font-weight: 600; margin-top: 4px;"><?php echo $notifCounts['to_review']; ?></div>
         </div>
         <div style="flex: 1; background: rgba(255,255,255,0.2); padding: 12px 15px; border-radius: 6px; min-width: 180px;">
-            <div style="font-size: 11px; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.5px;">My Documents</div>
+            <div style="font-size: 11px; opacity: 0.85; text-transform: uppercase;">My Documents</div>
             <div style="font-size: 24px; font-weight: 600; margin-top: 4px;"><?php echo $notifCounts['my_documents']; ?></div>
         </div>
     </div>
@@ -466,16 +731,16 @@ if($notifCounts['total'] > 0 && !isset($_GET['submit'])) {
     }
     
     if($hasTypes): ?>
-    <div style="font-size: 11px; opacity: 0.85; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Filter by Type</div>
+    <div style="font-size: 11px; opacity: 0.85; margin-bottom: 8px; text-transform: uppercase;">Filter by Type</div>
     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
         <?php foreach($docTypes as $type): ?>
             <?php if($notifCounts[$type] > 0): ?>
-            <a href="?tipe=<?php echo urlencode($type); ?>&submit=Show<?php echo ($state == 'Admin' && isset($status)) ? '&status='.$status : ''; ?>" 
-               style="background: rgba(255,255,255,0.25); padding: 6px 12px; border-radius: 4px; font-size: 13px; text-decoration: none; color: white; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;"
-               onmouseover="this.style.background='rgba(255,255,255,0.35)'"
-               onmouseout="this.style.background='rgba(255,255,255,0.25)'">
-                <span><?php echo htmlspecialchars($type); ?></span>
-                <span style="background: white; color: #667eea; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;"><?php echo $notifCounts[$type]; ?></span>
+            <a href="?tipe=<?php echo urlencode($type); ?>&submit=Show<?php echo ($state == 'Admin' && !empty($status)) ? '&status='.urlencode($status) : ''; ?>" 
+               style="background: rgba(255,255,255,0.25); padding: 6px 12px; border-radius: 4px; font-size: 13px; text-decoration: none; color: white; display: inline-flex; align-items: center; gap: 6px;">
+                <span><?php echo escapeHtml($type); ?></span>
+                <span style="background: white; color: #667eea; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;">
+                    <?php echo $notifCounts[$type]; ?>
+                </span>
             </a>
             <?php endif; ?>
         <?php endforeach; ?>
@@ -484,15 +749,14 @@ if($notifCounts['total'] > 0 && !isset($_GET['submit'])) {
 </div>
 <?php endif; ?>
 
-<!-- Notification Panel -->
 <div class="notification-panel" id="notificationPanel">
     <div class="notification-header">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <h6 style="margin: 0;"><span class="glyphicon glyphicon-bell"></span> Recent Updates</h6>
-            <button class="btn btn-xs btn-default" onclick="$('#notificationPanel').fadeOut();">×</button>
+            <button class="btn btn-xs btn-default" onclick="$('#notificationPanel').fadeOut();" type="button">×</button>
         </div>
     </div>
-    <div class="notification-body" id="notificationBody">
+    <div class="notification-body">
         <?php if(empty($recentNotifications)): ?>
         <div class="notification-item">
             <small class="text-muted">No recent notifications</small>
@@ -502,494 +766,248 @@ if($notifCounts['total'] > 0 && !isset($_GET['submit'])) {
         <div class="notification-item <?php echo ($notif['days_passed'] >= 3) ? 'overdue' : (($notif['days_passed'] >= 1) ? 'urgent' : ''); ?>" 
              onclick="window.location.href='detail.php?drf=<?php echo $notif['no_drf']; ?>&no_doc=<?php echo urlencode($notif['no_doc']); ?>'">
             <div style="display: flex; justify-content: space-between;">
-                <strong><?php echo htmlspecialchars($notif['doc_type']); ?> - <?php echo htmlspecialchars($notif['status']); ?></strong>
-                <small class="text-muted"><?php echo $notif['days_passed']; ?> days ago</small>
+                <strong><?php echo escapeHtml($notif['doc_type']); ?> - <?php echo escapeHtml($notif['status']); ?></strong>
+                <small class="text-muted"><?php echo (int)$notif['days_passed']; ?> days</small>
             </div>
-            <small><?php echo htmlspecialchars($notif['no_doc']); ?>: <?php echo htmlspecialchars(substr($notif['title'], 0, 50)); ?>...</small>
+            <small><?php echo escapeHtml($notif['no_doc']); ?>: <?php echo escapeHtml(substr($notif['title'], 0, 50)); ?>...</small>
         </div>
         <?php endforeach; ?>
         <?php endif; ?>
     </div>
 </div>
 
-<script type="text/javascript">
-$(document).ready(function () {
-    $('.upload-file').click(function () {
-        $('span.user-id').text($(this).data('id'));
-        var Id = $(this).data('id');
-        $(".modal-body #drf").val( Id );
+<h2>My Document</h2>
+
+<form action="" method="GET" class="form-inline" style="margin-bottom: 20px;">
+    <div class="form-group">
+        <select name="tipe" class="form-control">
+            <option value="-">--- Select Type ---</option>
+            <?php foreach($docTypes as $type): ?>
+            <option value="<?php echo escapeHtml($type); ?>" <?php echo ($tipe == $type) ? 'selected' : ''; ?>>
+                <?php echo escapeHtml($type); ?> <?php echo ($notifCounts[$type] > 0) ? '(' . $notifCounts[$type] . ' new)' : ''; ?>
+            </option>
+            <?php endforeach; ?>
+        </select>
         
+        <?php if ($state == 'Admin'): ?>
+        <select name="status" class="form-control">
+            <option value="-">--- Select Status ---</option>
+            <option <?php echo ($status == 'Review') ? 'selected' : ''; ?> value="Review">Review</option>
+            <option <?php echo ($status == 'Pending') ? 'selected' : ''; ?> value="Pending">Pending</option>
+            <option <?php echo ($status == 'Edited') ? 'selected' : ''; ?> value="Edited">Edited</option>
+            <option <?php echo ($status == 'Approved') ? 'selected' : ''; ?> value="Approved">Approved</option>
+        </select>
+        <?php endif; ?>
+
+        <button type="submit" name="submit" value="Show" class="btn btn-primary">
+            <span class="glyphicon glyphicon-search"></span> Show
+        </button>
+    </div>
+</form>
+
+<?php
+if(!empty($submit)) {
+    try {
+        if($state == 'Admin' || $state == 'Originator') {
+            $result = $docQuery->getDocuments($tipe, $status);
+            
+            if($result && mysqli_num_rows($result) > 0) {
+                renderDocumentTable($result, $nrp, $state, $tipe, $state == 'Admin' ? '' : 'originator');
+                mysqli_free_result($result);
+            } else {
+                echo '<div class="empty-state">
+                        <span class="glyphicon glyphicon-folder-open" style="font-size: 48px; color: #ccc;"></span>
+                        <h4>No Documents Found</h4>
+                        <p>No documents match your criteria.</p>
+                      </div>';
+            }
+        }
+        elseif($state == 'Approver') {
+            $results = $docQuery->getDocuments($tipe, '');
+            
+            if($results && is_array($results)) {
+                $count_review = mysqli_num_rows($results['to_review']);
+                $count_my = mysqli_num_rows($results['my_documents']);
+                
+                // Documents to Review Section
+                echo '<div class="section-header">
+                        <h3><span class="glyphicon glyphicon-check"></span> Documents to Review</h3>
+                        <span class="section-badge">' . $count_review . '</span>
+                      </div>';
+                
+                if($count_review > 0) {
+                    renderDocumentTable($results['to_review'], $nrp, $state, $tipe, 'reviewer');
+                    mysqli_free_result($results['to_review']);
+                } else {
+                    echo '<div class="empty-state">
+                            <span class="glyphicon glyphicon-ok-circle" style="font-size: 48px; color: #5cb85c;"></span>
+                            <h4>All Clear!</h4>
+                            <p>No documents waiting for your review.</p>
+                          </div>';
+                }
+                
+                // My Documents Section
+                echo '<div class="section-header my-docs">
+                        <h3><span class="glyphicon glyphicon-folder-open"></span> My Documents</h3>
+                        <span class="section-badge">' . $count_my . '</span>
+                      </div>';
+                
+                if($count_my > 0) {
+                    renderDocumentTable($results['my_documents'], $nrp, $state, $tipe, 'originator');
+                    mysqli_free_result($results['my_documents']);
+                } else {
+                    echo '<div class="empty-state">
+                            <span class="glyphicon glyphicon-folder-open" style="font-size: 48px; color: #ccc;"></span>
+                            <h4>No Documents</h4>
+                            <p>You haven\'t created any documents yet.</p>
+                          </div>';
+                }
+            }
+        }
+    } catch (Exception $e) {
+        error_log("Error displaying documents: " . $e->getMessage());
+        echo '<div class="alert alert-danger">
+                <strong>Error:</strong> Unable to load documents. Please try again later.
+              </div>';
+    }
+}
+?>
+
+<script>
+$(document).ready(function() {
+    // Upload file modal
+    $(document).on('click', '.upload-file', function() {
+        var drf = $(this).data('id');
         var nodoc = $(this).data('nodoc');
-        $(".modal-body #nodoc").val( nodoc );
-
         var type = $(this).data('type');
-        $(".modal-body #type").val( type );
-
         var lama = $(this).data('lama');
-        $(".modal-body #lama").val( lama );
-
         var title = $(this).data('title');
-        $(".modal-body #title").val( title );
-    });
-
-    $('.sec-file').click(function () {
-        $('span.user-id').text($(this).data('id'));
-        var Id = $(this).data('id');
-        $(".modal-body #drf").val( Id );
         
-        var lama = $(this).data('lama');
-        $(".modal-body #lama").val( lama );
-
-        var type = $(this).data('type');
-        $(".modal-body #type").val( type );
-
-        var rev = $(this).data('rev');
-        $(".modal-body #rev").val( rev );
-
-        var status = $(this).data('status');
-        $(".modal-body #status").val( status );
+        $("#myModal #drf").val(drf);
+        $("#myModal #nodoc").val(nodoc);
+        $("#myModal #type").val(type);
+        $("#myModal #lama").val(lama);
+        $("#myModal #title").val(title);
     });
 
-    // Notification System
+    // Secure file modal
+    $(document).on('click', '.sec-file', function() {
+        var drf = $(this).data('id');
+        var lama = $(this).data('lama');
+        var type = $(this).data('type');
+        var rev = $(this).data('rev');
+        var status = $(this).data('status');
+        
+        $("#myModal2 #drf").val(drf);
+        $("#myModal2 #lama").val(lama);
+        $("#myModal2 #type").val(type);
+        $("#myModal2 #rev").val(rev);
+        $("#myModal2 #status").val(status);
+    });
+
+    // Notification bell
     $('#notificationBell').click(function(e) {
         e.preventDefault();
-        $('#notificationPanel').fadeToggle();
+        e.stopPropagation();
+        $('#notificationPanel').fadeToggle(200);
     });
 
     // Close notification panel when clicking outside
     $(document).click(function(e) {
         if (!$(e.target).closest('#notificationPanel, #notificationBell').length) {
-            $('#notificationPanel').fadeOut();
+            $('#notificationPanel').fadeOut(200);
         }
+    });
+    
+    // Prevent notification panel clicks from closing it
+    $('#notificationPanel').click(function(e) {
+        e.stopPropagation();
     });
 });
 </script>
 
-<h2>My Document</h2>
-
-<form action="" method="GET" >
-    <div class="col-sm-4">
-        <div class="dropdown-with-badge">
-            <select name="tipe" class="form-control">
-                <option value="-">--- Select Type ---</option>
-                <?php foreach($docTypes as $type): ?>
-                <option value="<?php echo htmlspecialchars($type); ?>" <?php echo (isset($tipe) && $tipe == $type) ? 'selected' : ''; ?>>
-                    <?php echo htmlspecialchars($type); ?> <?php echo ($notifCounts[$type] > 0) ? '(' . $notifCounts[$type] . ' new)' : ''; ?>
-                </option>
-                <?php endforeach; ?>
-            </select>
+<!-- Modal: Change Document -->
+<div class="modal fade" id="myModal" tabindex="-1" role="dialog" aria-labelledby="uploadModalLabel">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+                <h4 class="modal-title" id="uploadModalLabel">Upload Document</h4>
+            </div>
+            <form name="ganti_doc" method="POST" action="ganti_doc.php" enctype="multipart/form-data">
+                <div class="modal-body">
+                    <input type="hidden" name="drf" id="drf" class="form-control">
+                    <input type="hidden" name="nodoc" id="nodoc" class="form-control">
+                    <input type="hidden" name="type" id="type" class="form-control">
+                    <input type="hidden" name="title" id="title" class="form-control">
+                    <input type="hidden" name="lama" id="lama" class="form-control">
+                    
+                    <div class="form-group">
+                        <label>File Document (.pdf/.xlsx):</label>
+                        <input type="file" name="baru" class="form-control" required accept=".pdf,.xlsx">
+                        <small class="help-block">Maximum file size: 10MB</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>File Master (.docx/.xlsx):</label>
+                        <input type="file" name="masterbaru" class="form-control" accept=".docx,.xlsx">
+                        <small class="help-block">Optional - Maximum file size: 10MB</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                    <button type="submit" name="upload" class="btn btn-primary">
+                        <span class="glyphicon glyphicon-upload"></span> Update
+                    </button>
+                </div>
+            </form>
         </div>
-        
-        <?php if ($state=='Admin'){ ?>
-        <select name="status" class="form-control">
-            <option value="-">--- Select Status ---</option>
-            <option <?php echo (isset($status) && $status == 'Review') ? 'selected' : ''; ?> value="Review">Review</option>
-            <option <?php echo (isset($status) && $status == 'Pending') ? 'selected' : ''; ?> value="Pending">Pending</option>
-            <option <?php echo (isset($status) && $status == 'Edited') ? 'selected' : ''; ?> value="Edited">Edited</option>
-            <option <?php echo (isset($status) && $status == 'Approved') ? 'selected' : ''; ?> value="Approved">Approved</option>
-        </select>           
-        <?php } ?>
-
-        <input type="submit" name="submit" value="Show" class="btn btn-primary" />
     </div>
-    <br />
-    <br />
-    <br />
-</form>
-
-<!-- Auto Refresh Indicator -->
-<div class="auto-refresh-indicator" id="refreshIndicator">
-    <span class="glyphicon glyphicon-refresh"></span> Checking for updates...
 </div>
 
-<?php
-if(isset($_GET['submit']))
-{
-    // ✅ INISIALISASI VARIABLE DENGAN DEFAULT VALUE
-    $tipe = isset($_GET['tipe']) ? $_GET['tipe'] : '-';
-    $status = ''; // Default empty string
-    
-    // Untuk Admin, ambil status dari GET parameter atau default 'Review'
-    if($state == 'Admin') {
-        if(isset($_GET['status']) && $_GET['status'] != '-') {
-            $status = $_GET['status'];
-        } else {
-            // Default ke semua status aktif jika auto show
-            $status = ''; 
-        }
-    }
-
-    if($tipe == "-"){
-        $sort = "";
-    } else {
-        $tipe_escaped = mysqli_real_escape_string($link, $tipe);
-        $sort = "and doc_type='$tipe_escaped'";
-    }
-
-    if($state == 'Admin') {
-        // Jika status kosong atau '-', tampilkan semua status aktif
-        if(empty($status) || $status == '-') {
-            $sql = "select * from docu where status IN ('Review', 'Pending', 'Edited') $sort order by no_drf";
-        } else {
-            $sql = "select * from docu where status='$status' $sort order by no_drf";
-        }
-        
-        $res = mysqli_query($link, $sql);
-        
-        if (!$res) {
-            die("Query Error: " . mysqli_error($link));
-        }
-        
-        // Tampilkan tabel biasa untuk Admin
-        renderDocumentTable($res, $link, $nrp, $state, $tipe, $status);
-    }
-    elseif($state == 'Originator') {
-        $sql = "select * from docu 
-                where (docu.status='Review' or docu.status='Pending' or docu.status='Edited') 
-                $sort and user_id='$nrp' 
-                order by no_drf";
-        $res = mysqli_query($link, $sql);
-        
-        if (!$res) {
-            die("Query Error: " . mysqli_error($link));
-        }
-        
-        // Tampilkan tabel biasa untuk Originator
-        renderDocumentTable($res, $link, $nrp, $state, $tipe, '');
-    }
-    elseif($state == 'Approver') {
-        // UNTUK APPROVER: PISAHKAN MENJADI 2 SECTION
-        
-        // ============================================================
-        // SECTION 1: Documents to Review (Yang harus di-approve)
-        // ============================================================
-        $sort_without_and = str_replace('and ', '', $sort);
-        
-        $sql_review = "SELECT DISTINCT docu.*
-                       FROM docu
-                       INNER JOIN rev_doc ON docu.no_drf=rev_doc.id_doc
-                       WHERE docu.status='Review' 
-                       AND rev_doc.status='Review' 
-                       AND rev_doc.nrp='$nrp'";
-        
-        if (!empty($sort_without_and)) {
-            $sql_review .= " AND " . $sort_without_and;
-        }
-        
-        $sql_review .= " ORDER BY docu.no_drf";
-        
-        $res_review = mysqli_query($link, $sql_review);
-        
-        if (!$res_review) {
-            die("Query Error (Review): " . mysqli_error($link));
-        }
-        
-        $count_review = mysqli_num_rows($res_review);
-        
-        // ============================================================
-        // SECTION 2: My Documents (Yang dia buat sendiri)
-        // ============================================================
-        $sql_my = "SELECT * FROM docu 
-                   WHERE user_id='$nrp' 
-                   AND status IN ('Review', 'Pending', 'Edited')";
-        
-        if (!empty($sort_without_and)) {
-            $sql_my .= " AND " . $sort_without_and;
-        }
-        
-        $sql_my .= " ORDER BY no_drf";
-        
-        $res_my = mysqli_query($link, $sql_my);
-        
-        if (!$res_my) {
-            die("Query Error (My Docs): " . mysqli_error($link));
-        }
-        
-        $count_my = mysqli_num_rows($res_my);
-        
-        // ============================================================
-        // RENDER 2 SECTION TERPISAH
-        // ============================================================
-        ?>
-        
-        <!-- SECTION 1: Documents to Review (SIMPLE VERSION) -->
-        <div class="section-header">
-            <h3><span class="glyphicon glyphicon-check"></span> Documents to Review</h3>
-            <span class="section-badge"><?php echo $count_review; ?></span>
+<!-- Modal: Secure Document -->
+<div class="modal fade" id="myModal2" tabindex="-1" role="dialog" aria-labelledby="secureModalLabel">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+                <h4 class="modal-title" id="secureModalLabel">Secure Document</h4>
+            </div>
+            <form name="secure_doc" method="POST" action="process.php" enctype="multipart/form-data">
+                <div class="modal-body">
+                    <input type="hidden" name="drf" id="drf" class="form-control">
+                    <input type="hidden" name="rev" id="rev" class="form-control">
+                    <input type="hidden" name="type" id="type" class="form-control">
+                    <input type="hidden" name="status" id="status" class="form-control">
+                    
+                    <div class="form-group">
+                        <label>Upload Secure File:</label>
+                        <input type="file" name="baru" class="form-control" required accept=".pdf">
+                        <small class="help-block">Only PDF files - Maximum file size: 10MB</small>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <strong>Note:</strong> This will secure the approved document and make it available for distribution.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                    <button type="submit" name="upload" class="btn btn-primary">
+                        <span class="glyphicon glyphicon-lock"></span> Secure & Update
+                    </button>
+                </div>
+            </form>
         </div>
-        
-        <?php if($count_review > 0): ?>
-        <div class="table-container">
-            <?php renderDocumentTable($res_review, $link, $nrp, $state, $tipe, '', 'reviewer'); ?>
-        </div>
-        <?php else: ?>
-        <div class="empty-state">
-            <div class="glyphicon glyphicon-ok-circle"></div>
-            <h4>All Clear!</h4>
-            <p>No documents waiting for your review.</p>
-        </div>
-        <?php endif; ?>
-        
-        <!-- SECTION 2: My Documents (SIMPLE VERSION) -->
-        <div class="section-header my-docs">
-            <h3><span class="glyphicon glyphicon-folder-open"></span> My Documents</h3>
-            <span class="section-badge"><?php echo $count_my; ?></span>
-        </div>
-        
-        <?php if($count_my > 0): ?>
-        <div class="table-container">
-            <?php renderDocumentTable($res_my, $link, $nrp, $state, $tipe, '', 'originator'); ?>
-        </div>
-        <?php else: ?>
-        <div class="empty-state">
-            <div class="glyphicon glyphicon-folder-open"></div>
-            <h4>No Documents</h4>
-            <p>You haven't created any documents yet.</p>
-        </div>
-        <?php endif; ?>
-        
-        <?php
-    }
-}
-
-/**
- * ============================================================================
- * FUNCTION TO RENDER DOCUMENT TABLE
- * ============================================================================
- */
-function renderDocumentTable($res, $link, $nrp, $state, $tipe, $status, $section_type = '') {
-?>
-<table class="table table-hover">
-<thead bgcolor="#00FFFF">
-<tr>
-    <td>No</td>
-    <td>Date</td>
-    <td>No. Drf</td>
-    <td>No Document</td>
-    <td>No Rev.</td>
-    <td>Title</td>
-    <td>Process</td>
-    <td>Section</td>
-    <td>Type</td>
-    <td>Review To</td>
-    <td>Pass Day</td>
-    <td>Status</td>
-    <td>Action</td>
-</tr>
-</thead>
-<tbody>
-<?php
-$j=1;
-while($info = mysqli_fetch_array($res)) 
-{ ?>
-
-<tr <?php 
-    $tglsekarang = date('d-m-Y');
-    $tglissue  =$info['tgl_upload'];
-    $pecah1 = explode("-", $tglissue );
-    $date1 = $pecah1[0];
-    $month1 = $pecah1[1];
-    $year1 = $pecah1[2];
-    $pecah2 = explode("-", $tglsekarang);
-    $date2 = $pecah2[0];
-    $month2 = $pecah2[1];
-    $year2 =  $pecah2[2];
-    $waktusekarang = GregorianToJD($month1, $date1, $year1);
-    $waktuinput = GregorianToJD($month2, $date2, $year2);
-    $selisih =$waktuinput - $waktusekarang; 
-    
-    $dat1 = $info['tgl_upload'];
-    $dat2 = $tglsekarang;
-    $pecahTgl1 = explode("-", $dat1);
-    $tgl1 = $pecahTgl1[0];
-    $bln1 = $pecahTgl1[1];
-    $thn1 = $pecahTgl1[2];
-    
-    $i = 0;
-    $sum = 0;
-    do {
-        $tanggal = date("d-m-Y", mktime(0, 0, 0, $bln1, $tgl1+$i, $thn1));
-        if (date("w", mktime(0, 0, 0, $bln1, $tgl1+$i, $thn1)) == 0 or date("w", mktime(0, 0, 0, $bln1, $tgl1+$i, $thn1)) == 6) {
-            $sum++;
-        }
-        $i++;
-    } while ($tanggal != $dat2);
-    
-    $day=$selisih-$sum;
-    $dayx=$day+1;
-    
-    // Highlight rows based on days passed
-    if($dayx >= 3 && $info['status']=='Review') {
-        echo 'style="background-color: #f8d7da;"';
-    } elseif($dayx >= 1 && $info['status']=='Review') {
-        echo 'style="background-color: #fff3cd;"';
-    } elseif($info['status']=='Pending') {
-        echo 'style="background-color: #fff3cd;"';
-    } elseif($info['status']=='Edited') {
-        echo 'style="background-color: #d1ecf1;"';
-    }
-?>>
-    <td><?php echo $j; ?></td>
-    <td><?php echo htmlspecialchars($info['tgl_upload']);?></td>
-    <td><?php echo htmlspecialchars($info['no_drf']);?></td>
-    <td><?php echo htmlspecialchars($info['no_doc']);?></td>
-    <td><?php echo htmlspecialchars($info['no_rev']);?></td>
-    <td>
-    <?php 
-    $doc_type = htmlspecialchars($info['doc_type']);
-    $file_name = htmlspecialchars($info['file']);
-    
-    $safe_type = preg_replace('/[^A-Za-z0-9 _\-&]/', '', $doc_type);
-    $safe_type = str_replace(' ', '_', $safe_type);
-    
-    if ($info['no_drf']>12967){
-        $tempat = $safe_type;
-    } else {
-        $tempat = "document";
-    }
-    ?>
-    <a href="<?php echo $tempat; ?>/<?php echo $file_name; ?>" >
-        <?php echo htmlspecialchars($info['title']);?>
-    </a>
-    </td>
-    <td><?php echo htmlspecialchars($info['process']);?></td>
-    <td><?php echo htmlspecialchars($info['section']);?></td>
-    <td><?php echo $doc_type;?></td>
-    <td><?php echo htmlspecialchars($info['rev_to']);?></td>
-    <td>
-        <?php
-        echo $day+1;
-        
-        // Check apakah user adalah originator dokumen ini
-        $is_originator = ($info['user_id'] == $nrp);
-        
-        if ($dayx>=1 and $info['status']=='Review' and ($state=='Admin' or $is_originator) ) {
-        ?>
-            <a href="reminder.php?drf=<?php echo $info['no_drf'];?>&type=<?php echo urlencode($info['doc_type']);?>&nodoc=<?php echo urlencode($info['no_doc']);?>&title=<?php echo urlencode($info['title']);?>" class="btn btn-xs btn-warning"><span class="glyphicon glyphicon-envelope"></span>&nbsp; Reminder <strong><?php echo $info['reminder']?>x</strong></a>
-        <?php
-        }
-        ?>
-    </td>
-    <td>
-    <?php if ($info['status']=='Review'){ ?>
-    <span class="label label-info"><?php } ?>
-    <?php if ($info['status']=='Pending'){ ?>
-    <span class="label label-warning"><?php } ?>
-    <?php if ($info['status']=='Edited'){ ?>
-    <span class="label label-primary"><?php } ?>
-    <?php if ($info['status']=='Approved'){ ?>
-    <span class="label label-success"><?php }?>
-        <?php echo htmlspecialchars($info['status']);?>
-    </span>
-    </td>
-    <td>
-    <a href="detail.php?drf=<?php echo $info['no_drf'];?>&no_doc=<?php echo urlencode($info['no_doc']);?>" class="btn btn-xs btn-info" title="lihat detail"><span class="glyphicon glyphicon-search" ></span> </a>
-    <a href="radf.php?drf=<?php echo $info['no_drf'];?>&section=<?php echo urlencode($info['section'])?>" class="btn btn-xs btn-info" title="lihat RADF"><span class="glyphicon glyphicon-eye-open" ></span> </a>
-    <a href="lihat_approver.php?drf=<?php echo $info['no_drf'];?>&nodoc=<?php echo urlencode($info['no_doc'])?>&title=<?php echo urlencode($info['title'])?>&type=<?php echo urlencode($info['doc_type'])?>" class="btn btn-xs btn-info" title="lihat approver"><span class="glyphicon glyphicon-user" ></span> </a> 
-    
-    <?php 
-    // LOGIC BERDASARKAN SECTION TYPE
-    // Jika di section "Documents to Review" -> tampilkan tombol Approve/Suspend
-    // Jika di section "My Documents" -> tampilkan tombol Edit/Delete
-    
-    if($section_type == 'reviewer') {
-        // Ini adalah dokumen yang harus di-review
-        // Cek apakah dia bukan originator (untuk menghindari conflict of interest)
-        $is_doc_originator = ($info['user_id'] == $nrp);
-        
-        if(!$is_doc_originator) {
-            // Tampilkan tombol Approve & Suspend
-            ?>
-            <a href="approve.php?drf=<?php echo $info['no_drf'];?>&device=<?php echo urlencode($info['device'])?>&no_doc=<?php echo urlencode($info['no_doc']);?>&title=<?php echo urlencode($info['title']) ?>&tipe=<?php echo urlencode($tipe); ?>" class="btn btn-xs btn-success" title="Approve Doc"><span class="glyphicon glyphicon-thumbs-up" ></span> </a>
-            <a href="pending.php?drf=<?php echo $info['no_drf'];?>&no_doc=<?php echo urlencode($info['no_doc']);?>&type=<?php echo urlencode($info['doc_type']);?>" class="btn btn-xs btn-warning" title="Suspend Doc"><span class="glyphicon glyphicon-warning-sign" ></span>  </a>
-            <?php
-        }
-    } elseif($section_type == 'originator' || $state == 'Originator' || $state == 'Admin') {
-        // Ini adalah dokumen yang dia buat sendiri atau untuk Originator/Admin role
-        $is_doc_originator = ($info['user_id'] == $nrp);
-        
-        if ($state=='Admin' || ($is_doc_originator && $info['status']<>"Approved")) { 
-        ?>
-            <a href="edit_doc.php?drf=<?php echo $info['no_drf'];?>" class="btn btn-xs btn-primary" title="Edit Doc"><span class="glyphicon glyphicon-pencil" ></span> </a>
-            <a href="del_doc.php?drf=<?php echo $info['no_drf'];?>" class="btn btn-xs btn-danger" onClick="return confirm('Delete document <?php echo htmlspecialchars($info['no_doc'])?>?')" title="Delete Doc"><span class="glyphicon glyphicon-remove" ></span> </a>
-            
-            <?php if ($info['status']=='Approved') { ?>
-            <a data-toggle="modal" data-target="#myModal2" data-id="<?php echo $info['no_drf']?>" data-lama="<?php echo htmlspecialchars($info['file'])?>" data-type="<?php echo htmlspecialchars($info['doc_type'])?>" data-status="<?php echo htmlspecialchars($info['status'])?>" data-rev="<?php echo htmlspecialchars($info['rev_to'])?>" class="btn btn-xs btn-success sec-file" title="Secure Document">
-            <span class="glyphicon glyphicon-play" ></span></a>
-            <?php } 
-        }
-        
-        // Tombol Change Document untuk status Pending
-        if ($info['status']=='Pending' and ($is_doc_originator or $state=='Admin')) { 
-        ?>
-            <button data-toggle="modal" data-target="#myModal" data-id="<?php echo $info['no_drf']?>" data-type="<?php echo htmlspecialchars($info['doc_type'])?>" data-nodoc="<?php echo htmlspecialchars($info['no_doc'])?>" data-title="<?php echo htmlspecialchars($info['title'])?>" data-lama="<?php echo htmlspecialchars($info['file'])?>"  class="btn btn-xs btn-warning upload-file">
-            <span class="glyphicon glyphicon-upload"></span>
-            Change Document</button>
-        <?php 
-        }
-    }
-    ?>
-    </td>
-</tr>
+    </div>
+</div>
 
 <?php 
-$j++;
-} 
-?> 
-</tbody>
-</table>
-<?php
+// Include footer if it exists
+if (file_exists('footer.php')) {
+    include 'footer.php';
 }
 ?>
-
-<div class="modal fade" id="myModal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
-                 <h4 class="modal-title" id="myModalLabel">Upload Document</h4>
-            </div>
-            <div class="modal-body">
-                <form name="ganti_doc" method="POST" action="ganti_doc.php" enctype="multipart/form-data">
-                    <div class="modal-body">
-                        <input type="hidden" name="drf" id="drf" class="form-control" value=""/>
-                        <input type="hidden" name="nodoc" id="nodoc" class="form-control" value=""/>
-                        <input type="hidden" name="type" id="type" class="form-control" value=""/>
-                        <input type="hidden" name="title" id="title" class="form-control" value=""/>
-                        <input type="text" name="lama" id="lama" class="form-control" value=""/>
-                        File Document(.pdf/.xlsx):<input type="file" name="baru" class="form-control">
-                        File Master(.docx/.xlsx):<input type="file" name="masterbaru" class="form-control"><br />
-                    </div>
-                    <div class="modal-footer"> <a class="btn btn-default" data-dismiss="modal">Cancel</a>
-                        <input type="submit" name="upload" value="Update" class="btn btn-primary">
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="myModal2" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
-                 <h4 class="modal-title" id="myModalLabel">Secure Document</h4>
-            </div>
-            <div class="modal-body">
-                <form name="secure_doc" method="POST" action="process.php" enctype="multipart/form-data">
-                    <div class="modal-body">
-                        <input type="hidden" name="drf" id="drf" class="form-control" value=""/>
-                        <input type="hidden" name="rev" id="rev" class="form-control" value=""/>
-                        <input type="hidden" name="type" id="type" class="form-control" value=""/>
-                        <input type="hidden" name="status" id="status" class="form-control" value=""/>
-                        <input type="file" name="baru" class="form-control">
-                    </div>
-                    <div class="modal-footer"> <a class="btn btn-default" data-dismiss="modal">Cancel</a>
-                        <input type="submit" name="upload" value="Update" class="btn btn-primary">
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
