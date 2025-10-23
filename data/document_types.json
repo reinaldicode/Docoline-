@@ -264,5 +264,22 @@
         },
         "use_custom_file": false,
         "custom_file": ""
+    },
+    {
+        "id": "adin",
+        "name": "Adin",
+        "has_submenu": false,
+        "submenu": [],
+        "filter_config": {
+            "section_dept": true,
+            "section_prod": false,
+            "device": true,
+            "process": true,
+            "status": true,
+            "category": false,
+            "type": false
+        },
+        "use_custom_file": false,
+        "custom_file": ""
     }
 ]

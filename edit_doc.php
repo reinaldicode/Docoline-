@@ -1,57 +1,166 @@
 <?php
+// Ganti urutan include
 include('header.php');
-include 'koneksi.php';
+include('koneksi.php');
+include_once('document_config.php'); // <-- TAMBAHKAN INI
 
-// Pastikan $drf didefinisikan
-$drf = isset($_GET['drf']) ? mysqli_real_escape_string($link, $_GET['drf']) : (isset($_POST['drf']) ? mysqli_real_escape_string($link, $_POST['drf']) : '');
+// Enable error reporting untuk debugging
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-if (empty($drf)) {
-    die("Error: No DRF specified");
+// ========== Definisikan $drf dengan benar ==========
+$drf = 0;
+if (isset($_GET['drf']) && is_numeric($_GET['drf'])) {
+    $drf = (int)$_GET['drf'];
+} elseif (isset($_POST['drf']) && is_numeric($_POST['drf'])) {
+    $drf = (int)$_POST['drf'];
 }
 
-// ========== LOAD DOCUMENT TYPES FROM JSON ==========
-$jsonFile = __DIR__ . '/data/document_types.json';
-$docTypes = [];
-if (file_exists($jsonFile)) {
-    $tmp = json_decode(file_get_contents($jsonFile), true);
-    if (is_array($tmp)) $docTypes = $tmp;
+if ($drf == 0) {
+    die("Error: No valid DRF specified");
 }
 
-// ========== HANDLE UPDATE STATUS TO REVIEW ==========
+// ========== LOAD DOCUMENT TYPES DARI CLASS TERPUSAT ==========
+// HAPUS loader JSON manual dari sini
+$docTypes = DocumentConfig::getFlattenedDocumentTypes(); // <-- PANGGIL CLASS
+
+
+// ============================================================================
+// HANDLE UPDATE STATUS TO REVIEW (Tombol "Selesai")
+// ... (Logika ini tidak berubah, saya persingkat untuk kejelasan)
+// ============================================================================
 if (isset($_POST['update_status']) && $_POST['update_status'] == '1' && isset($_POST['action']) && $_POST['action'] == 'finish') {
-    $drf_update = mysqli_real_escape_string($link, $_POST['drf']);
     
-    // Update status dokumen ke Review
-    $update_status = "UPDATE docu SET status='Review' WHERE no_drf='$drf_update'";
+    if (!isset($_POST['drf']) || !is_numeric($_POST['drf'])) {
+        die("Error: Invalid DRF for update");
+    }
+    
+    $drf_update = (int)$_POST['drf'];
+    
+    if ($drf_update == 0) {
+        die("Error: DRF cannot be zero");
+    }
+    
+    // ========== STEP 1: CEK DATA SEBELUM UPDATE ==========
+    $check_before = "SELECT id, nrp, status, tgl_approve, reason FROM rev_doc WHERE id_doc=$drf_update";
+    $res_before = mysqli_query($link, $check_before);
+    
+    $debug_info = "\n\n";
+    if ($res_before) {
+        while ($row = mysqli_fetch_assoc($res_before)) {
+            $debug_info .= "\n";
+        }
+    }
+    echo $debug_info;
+    
+    // ========== STEP 2: Update status dokumen ke Review ==========
+    $update_status = "UPDATE docu SET status='Review' WHERE no_drf=$drf_update";
     $result_update = mysqli_query($link, $update_status);
     
-    // PERBAIKAN CRITICAL: Reset status semua approver kembali ke Review
-    $reset_approvers = "UPDATE rev_doc SET status='Review', reason='', tgl_approve='-' WHERE id_doc='$drf_update'";
+    if (!$result_update) {
+        die("Error updating docu: " . mysqli_error($link) . "<br>Query: " . $update_status);
+    }
+    
+    // ========== STEP 3: RESET APPROVER DENGAN CARA YANG BENAR ==========
+    $reset_approvers = "UPDATE rev_doc 
+                        SET status='Review', 
+                            reason='', 
+                            tgl_approve='-' 
+                        WHERE id_doc=$drf_update 
+                        AND status='Pending'";
+    
+    echo "\n";
+    
     $result_reset = mysqli_query($link, $reset_approvers);
     
-    if ($result_update && $result_reset) {
-        // Get document info for email notification
-        $get_doc = mysqli_query($link, "SELECT no_doc, title, doc_type FROM docu WHERE no_drf='$drf_update'");
-        $doc_data = mysqli_fetch_array($get_doc);
-        $redirect_type = isset($doc_data['doc_type']) ? $doc_data['doc_type'] : '';
+    if (!$result_reset) {
+        echo "\n";
         
-        // Get all approvers for notification
-        $sql_approvers = "SELECT DISTINCT u.name, u.email 
-                          FROM rev_doc rd
-                          JOIN users u ON u.username = rd.nrp 
-                          WHERE rd.id_doc = '$drf_update'";
+        $get_pending = "SELECT id FROM rev_doc WHERE id_doc=$drf_update AND status='Pending'";
+        $res_pending_ids = mysqli_query($link, $get_pending);
         
-        $res_approvers = mysqli_query($link, $sql_approvers);
-        $approvers_to_notify = [];
+        $success_count = 0;
+        $error_count = 0;
         
-        if ($res_approvers && mysqli_num_rows($res_approvers) > 0) {
-            while ($data = mysqli_fetch_assoc($res_approvers)) {
-                $approvers_to_notify[] = $data;
+        if ($res_pending_ids && mysqli_num_rows($res_pending_ids) > 0) {
+            while ($row_id = mysqli_fetch_assoc($res_pending_ids)) {
+                $id = $row_id['id'];
+                $update_single = "UPDATE rev_doc 
+                                  SET status='Review', reason='', tgl_approve='-' 
+                                  WHERE id=$id";
+                
+                if (mysqli_query($link, $update_single)) {
+                    $success_count++;
+                    echo "\n";
+                } else {
+                    $error_count++;
+                    echo "\n";
+                }
             }
         }
         
-        // Send email notification
-        if (count($approvers_to_notify) > 0) {
+        $affected_rows = $success_count;
+        
+        if ($error_count > 0) {
+            die("Error: Failed to update $error_count approver(s). Please check database permissions.");
+        }
+    } else {
+        $affected_rows = mysqli_affected_rows($link);
+    }
+    
+    echo "\n";
+    
+    // ========== STEP 4: CEK HASIL UPDATE ==========
+    $check_after = "SELECT id, nrp, status, tgl_approve, reason FROM rev_doc WHERE id_doc=$drf_update";
+    $res_after = mysqli_query($link, $check_after);
+    
+    $debug_after = "\n\n";
+    if ($res_after) {
+        while ($row = mysqli_fetch_assoc($res_after)) {
+            $debug_after .= "\n";
+        }
+    }
+    echo $debug_after;
+    
+    // ========== STEP 5: Get document info ==========
+    $get_doc = mysqli_query($link, "SELECT no_doc, title, doc_type FROM docu WHERE no_drf=$drf_update");
+    
+    if (!$get_doc) {
+        die("Error getting document: " . mysqli_error($link));
+    }
+    
+    $doc_data = mysqli_fetch_array($get_doc);
+    if (!$doc_data) {
+        die("Error: Document not found for DRF $drf_update");
+    }
+    
+    $redirect_type = isset($doc_data['doc_type']) ? $doc_data['doc_type'] : '';
+    
+    // ========== STEP 6: Get approvers untuk notifikasi ==========
+    $sql_pending_approvers = "SELECT DISTINCT u.name, u.email, u.username, rd.status
+                              FROM rev_doc rd
+                              JOIN users u ON u.username = rd.nrp 
+                              WHERE rd.id_doc = $drf_update AND rd.status='Review'";
+    
+    $res_pending = mysqli_query($link, $sql_pending_approvers);
+    $approvers_to_notify = [];
+    
+    if ($res_pending && mysqli_num_rows($res_pending) > 0) {
+        while ($data = mysqli_fetch_assoc($res_pending)) {
+            $approvers_to_notify[] = $data;
+        }
+    }
+    
+    $sql_still_approved = "SELECT COUNT(*) as approved_count 
+                           FROM rev_doc 
+                           WHERE id_doc=$drf_update AND status='Approved'";
+    $res_approved = mysqli_query($link, $sql_still_approved);
+    $row_approved = mysqli_fetch_assoc($res_approved);
+    $approved_count = $row_approved['approved_count'];
+    
+    // ========== STEP 7: Send email (optional) ==========
+    if (count($approvers_to_notify) > 0) {
+        if (file_exists('PHPMailer/PHPMailerAutoload.php')) {
             require 'PHPMailer/PHPMailerAutoload.php';
             $mail = new PHPMailer();
             
@@ -69,44 +178,63 @@ if (isset($_POST['update_status']) && $_POST['update_status'] == '1' && isset($_
                 $mail->IsHTML(true);
                 $mail->Subject = "Document Updated - Re-Review Required: " . $doc_data['no_doc'];
                 $mail->Body = "Attention Mr./Mrs. Reviewer,<br/><br/>" .
-                              "The following document has been updated by the originator and requires your re-review:" .
+                              "The following document has been updated and requires your re-review:" .
                               "<br/><br/><b>No. Document:</b> " . htmlspecialchars($doc_data['no_doc']) .
                               "<br/><b>Title:</b> " . htmlspecialchars($doc_data['title']) .
-                              "<br/><br/>Your previous decision has been reset. Please review the updated document." .
-                              "<br/>Please login into <a href='http://192.168.132.15/document'>Document Online System</a>. Thank You.";
+                              "<br/><br/><b>Note:</b> You previously suspended this document." .
+                              ($approved_count > 0 ? "<br/><b>Good News:</b> $approved_count approver(s) who already approved do NOT need to approve again!" : "") .
+                              "<br/><br/>Please login into <a href='http://192.168.132.15/document'>Document Online System</a>. Thank You.";
 
                 $mail->send();
             } catch (Exception $e) {
-                // Silent fail - don't block the process
+                error_log("Email send failed: " . $e->getMessage());
             }
         }
-        
-        ?>
-        <script language='javascript'>
-            alert('Status berhasil diupdate ke Review dan approver telah diberitahu');
-            document.location='my_doc.php?tipe=<?php echo urlencode($redirect_type); ?>&submit=Show';
-        </script>
-        <?php
-        exit;
-    } else {
-        ?>
-        <script language='javascript'>
-            alert('Gagal mengupdate status: <?php echo mysqli_error($link); ?>');
-        </script>
-        <?php
     }
+    
+    // ========== STEP 8: Success message ==========
+    $message = "✓ Status berhasil diupdate!\\n\\n";
+    
+    if ($affected_rows > 0) {
+        $message .= "✓ Updated $affected_rows approver(s) from Pending to Review\\n";
+    } else {
+        $message .= "⚠ No pending approvers to update\\n";
+    }
+    
+    if (count($approvers_to_notify) > 0) {
+        $message .= "\\nApprovers that need to re-review:\\n";
+        foreach ($approvers_to_notify as $app) {
+            $message .= "  - {$app['name']} ({$app['username']})\\n";
+        }
+    }
+    
+    if ($approved_count > 0) {
+        $message .= "\\n✓ $approved_count approver(s) who already approved do NOT need to approve again";
+    }
+    
+    ?>
+    <script language='javascript'>
+        alert('<?php echo $message; ?>');
+        document.location='my_doc.php?tipe=<?php echo urlencode($redirect_type); ?>&submit=Show';
+    </script>
+    <?php
+    exit;
 }
 
-// ========== HANDLE FORM SUBMISSION ==========
+// ========== HANDLE FORM SUBMISSION (Save Changes) ==========
 if (isset($_POST['submit']) && $_POST['submit'] == 'save') {
-    $drf_post = mysqli_real_escape_string($link, $_POST['drf']);
+    
+    if (!isset($_POST['drf']) || !is_numeric($_POST['drf'])) {
+        die("Error: Invalid DRF in form submission");
+    }
+    
+    $drf_post = (int)$_POST['drf'];
 
-    // Escape all inputs
     $nodoc = mysqli_real_escape_string($link, $_POST['nodoc']);
     $norev = mysqli_real_escape_string($link, $_POST['norev']);
     $revto = mysqli_real_escape_string($link, $_POST['revto']);
     $cat = mysqli_real_escape_string($link, $_POST['cat']);
-    $type = mysqli_real_escape_string($link, $_POST['type']);
+    $type = mysqli_real_escape_string($link, $_POST['type']); // <-- Ini sekarang dinamis
     $section = mysqli_real_escape_string($link, $_POST['section']);
     $device = mysqli_real_escape_string($link, $_POST['device']);
     $process = mysqli_real_escape_string($link, $_POST['process']);
@@ -120,7 +248,6 @@ if (isset($_POST['submit']) && $_POST['submit'] == 'save') {
 
     $hist = mysqli_real_escape_string($link, $_POST['hist']);
 
-    // Update query without changing status
     $sql = "UPDATE docu SET 
             no_doc='$nodoc', 
             no_rev='$norev', 
@@ -134,7 +261,7 @@ if (isset($_POST['submit']) && $_POST['submit'] == 'save') {
             descript='$desc', 
             iso=$iso, 
             history='$hist'
-            WHERE no_drf='$drf_post'";
+            WHERE no_drf=$drf_post";
 
     $res = mysqli_query($link, $sql);
 
@@ -142,22 +269,15 @@ if (isset($_POST['submit']) && $_POST['submit'] == 'save') {
         die("Update failed: " . mysqli_error($link));
     }
 
-    // Delete old related documents
-    mysqli_query($link, "DELETE FROM rel_doc WHERE no_drf='$drf_post'");
+    mysqli_query($link, "DELETE FROM rel_doc WHERE no_drf=$drf_post");
 
-    // Insert new related documents
     if (isset($_POST["rel"]) && is_array($_POST["rel"])) {
-        foreach($_POST["rel"] as $no_doc) {
-            $no_doc = trim($no_doc);
+        foreach($_POST["rel"] as $no_doc_rel) {
+            $no_doc_rel = trim($no_doc_rel);
             
-            if (!empty($no_doc)) {
-                $no_doc_escaped = mysqli_real_escape_string($link, $no_doc);
-                
-                $q = mysqli_query($link, "INSERT INTO rel_doc(no_drf, no_doc) VALUES ('$drf_post', '$no_doc_escaped')"); 
-                
-                if (!$q) {
-                    echo "Error inserting related doc: " . mysqli_error($link) . "<br>";
-                }
+            if (!empty($no_doc_rel)) {
+                $no_doc_escaped = mysqli_real_escape_string($link, $no_doc_rel);
+                mysqli_query($link, "INSERT INTO rel_doc(no_drf, no_doc) VALUES ($drf_post, '$no_doc_escaped')"); 
             }
         }
     }
@@ -166,232 +286,254 @@ if (isset($_POST['submit']) && $_POST['submit'] == 'save') {
     $drf = $drf_post;
 }
 
-$sql="select * from docu where no_drf='$drf'";
+// ========== DISPLAY FORM ==========
+$sql="SELECT * FROM docu WHERE no_drf=$drf";
 $res=mysqli_query($link, $sql);
+
+if (!$res) {
+    die("Error loading document: " . mysqli_error($link));
+}
 
 while($data = mysqli_fetch_array($res)) 
 {
+    // Get approver status
+    $sql_status = "SELECT 
+                   SUM(CASE WHEN status='Approved' THEN 1 ELSE 0 END) as approved_count,
+                   SUM(CASE WHEN status='Pending' THEN 1 ELSE 0 END) as pending_count,
+                   SUM(CASE WHEN status='Review' THEN 1 ELSE 0 END) as review_count,
+                   COUNT(*) as total_count
+                   FROM rev_doc WHERE id_doc=$drf";
+    $res_status = mysqli_query($link, $sql_status);
+    $status_data = mysqli_fetch_assoc($res_status);
+    
+    // Get detail approver list
+    $sql_approvers = "SELECT rd.id, rd.nrp, u.name, rd.status, rd.tgl_approve, rd.reason
+                      FROM rev_doc rd
+                      LEFT JOIN users u ON u.username = rd.nrp
+                      WHERE rd.id_doc=$drf
+                      ORDER BY rd.status DESC";
+    $res_approvers = mysqli_query($link, $sql_approvers);
 ?>
 
 <div class="row">
 <div class="col-xs-1"></div>
 <div class="col-xs-7 well well-lg">
- <h2>Edit Document</h2>
+<h2>Edit Document</h2>
 
-<form action="" method="POST" enctype="multipart/form-data" id="editForm">
+<div class="alert alert-warning" style="font-size: 11px;">
+    <strong>DEBUG INFO (DRF: <?php echo $drf; ?>):</strong><br/>
+    <table class="table table-condensed table-bordered" style="margin-top: 10px;">
+        <tr style="background: #f5f5f5;">
+            <th>ID</th>
+            <th>Approver</th>
+            <th>NRP</th>
+            <th>Status</th>
+            <th>Tgl Approve</th>
+            <th>Reason</th>
+        </tr>
+        <?php 
+        if ($res_approvers && mysqli_num_rows($res_approvers) > 0) {
+            while($app = mysqli_fetch_assoc($res_approvers)) {
+                $badge_class = $app['status'] == 'Approved' ? 'success' : ($app['status'] == 'Pending' ? 'warning' : 'info');
+                ?>
+                <tr>
+                    <td><?php echo $app['id']; ?></td>
+                    <td><?php echo htmlspecialchars($app['name'] ?: 'N/A'); ?></td>
+                    <td><?php echo htmlspecialchars($app['nrp']); ?></td>
+                    <td><span class="label label-<?php echo $badge_class; ?>"><?php echo $app['status']; ?></span></td>
+                    <td><?php echo htmlspecialchars($app['tgl_approve']); ?></td>
+                    <td><?php echo htmlspecialchars(substr($app['reason'], 0, 30)); ?><?php echo strlen($app['reason']) > 30 ? '...' : ''; ?></td>
+                </tr>
+                <?php
+            }
+        } else {
+            echo "<tr><td colspan='6'>No approvers found</td></tr>";
+        }
+        ?>
+    </table>
+</div>
+
+<?php if ($status_data['approved_count'] > 0 || $status_data['pending_count'] > 0): ?>
+<div class="alert alert-info">
+    <span class="glyphicon glyphicon-info-sign"></span>
+    <strong>Approval Status:</strong><br/>
+    <ul>
+        <?php if ($status_data['approved_count'] > 0): ?>
+        <li>✓ <strong><?php echo $status_data['approved_count']; ?></strong> approver(s) already approved</li>
+        <?php endif; ?>
+        <?php if ($status_data['pending_count'] > 0): ?>
+        <li>⚠ <strong><?php echo $status_data['pending_count']; ?></strong> approver(s) suspended (need re-review)</li>
+        <?php endif; ?>
+        <?php if ($status_data['review_count'] > 0): ?>
+        <li>⏳ <strong><?php echo $status_data['review_count']; ?></strong> approver(s) pending review</li>
+        <?php endif; ?>
+    </ul>
+</div>
+<?php endif; ?>
+
+<form action="" method="POST" enctype="multipart/form-data">
     <table class="table">
+        <input type="hidden" name="drf" value="<?php echo $drf; ?>">
         
-        <input type="hidden" name="drf" value="<?php echo htmlspecialchars($drf); ?>">
-        
-        <tr cellpadding="50px">
-            <td>No. Document &nbsp;&nbsp;</td>
-            <td>:&nbsp; &nbsp; &nbsp;</td>
+        <tr>
+            <td>No. Document</td>
+            <td>:</td>
             <td><input type="text" class="form-control" name="nodoc" value="<?php echo htmlspecialchars($data['no_doc']); ?>"></td>
         </tr>
-        <tr cellpadding="50px">
-            <td>No. Revision &nbsp;&nbsp;</td>
-            <td>:&nbsp; &nbsp; &nbsp;</td>
+        <tr>
+            <td>No. Revision</td>
+            <td>:</td>
             <td><input type="text" class="form-control" name="norev" value="<?php echo htmlspecialchars($data['no_rev']); ?>"></td>
         </tr>
-
         <tr>
             <td>Review To</td>
             <td>:</td>
             <td>
                 <select name="revto" class="form-control">
-                    <option value="-"> --- Select --- </option>
-                    <option value="Issue" <?php if ($data['rev_to']=="Issue") {echo 'selected';} ?> > Issue </option>
-                    <option value="Revision" <?php if ($data['rev_to']=="Revision") {echo 'selected';} ?> > Revision </option>
-                    <option value="Cancel" <?php if ($data['rev_to']=="Cancel") {echo 'selected';} ?> > Cancel </option>
+                    <option value="-">--- Select ---</option>
+                    <option value="Issue" <?php if ($data['rev_to']=="Issue") echo 'selected'; ?>>Issue</option>
+                    <option value="Revision" <?php if ($data['rev_to']=="Revision") echo 'selected'; ?>>Revision</option>
+                    <option value="Cancel" <?php if ($data['rev_to']=="Cancel") echo 'selected'; ?>>Cancel</option>
                 </select>
             </td>
         </tr>
-
         <tr>
             <td>Category</td>
             <td>:</td>
             <td>
                 <select name="cat" class="form-control">
-                    <option value="-"> --- Select --- </option>
-                    <option value="Internal" <?php if ($data['category']=="Internal") {echo 'selected';} ?> > Internal </option>
-                    <option value="External" <?php if ($data['category']=="External") {echo 'selected';} ?> > External </option>
+                    <option value="-">--- Select ---</option>
+                    <option value="Internal" <?php if ($data['category']=="Internal") echo 'selected'; ?>>Internal</option>
+                    <option value="External" <?php if ($data['category']=="External") echo 'selected'; ?>>External</option>
                 </select>
             </td>
         </tr>
-
+        
         <tr>
             <td>Document Type</td>
             <td>:</td>
             <td>
-                <?php
-                $current_type = $data['doc_type'];
-                
-                if (!empty($docTypes)) {
-                    echo '<select name="type" class="form-control" id="typeSelect">';
-                    echo '<option value="-"> --- Select Type --- </option>';
-                    
-                    $flat = [];
-                    $is_assoc = array_keys($docTypes) !== range(0, count($docTypes)-1);
-                    
-                    if ($is_assoc) {
-                        foreach ($docTypes as $catk => $items) {
-                            if (is_array($items)) {
-                                foreach ($items as $it) {
-                                    if (is_string($it)) $flat[] = $it;
-                                    elseif (is_array($it) && isset($it['name'])) $flat[] = $it['name'];
-                                }
-                            }
-                        }
-                    } else {
-                        foreach ($docTypes as $it) {
-                            if (is_string($it)) $flat[] = $it;
-                            elseif (is_array($it) && isset($it['name'])) $flat[] = $it['name'];
-                        }
-                    }
-                    
-                    $seen = [];
-                    foreach ($flat as $dt) {
-                        if ($dt === '' || in_array($dt, $seen)) continue;
-                        $seen[] = $dt;
-                        
-                        $selected = '';
-                        if (strcasecmp($current_type, $dt) === 0) {
-                            $selected = 'selected';
-                        }
-                        
-                        echo '<option value="'.htmlspecialchars($dt).'" '.$selected.'>'.htmlspecialchars($dt).'</option>';
-                    }
-                    
-                    echo '</select>';
-                } else {
+                <select name="type" class="form-control">
+                    <option value="-">--- Select ---</option>
+                    <?php 
+                    // Gunakan $docTypes yang sudah di-load dari DocumentConfig
+                    if (is_array($docTypes)) { // Pengecekan
+                        foreach ($docTypes as $type): 
+                            $type_esc = htmlspecialchars($type);
+                            // Set 'selected' jika tipenya sama dengan data dokumen
+                            $selected = ($data['doc_type'] == $type) ? 'selected' : '';
                     ?>
-                    <select name="type" class="form-control" id="typeSelect">
-                        <option value="-"> --- Select Type --- </option>
-                        <option value="Form" <?php if ($data['doc_type']=="Form") {echo 'selected';} ?> > Form </option>
-                        <option value="Procedure" <?php if ($data['doc_type']=="Procedure") {echo 'selected';} ?> > Procedure </option>
-                        <option value="WI" <?php if ($data['doc_type']=="WI") {echo 'selected';} ?> > WI </option>
-                        <option value="Sample" <?php if ($data['doc_type']=="Sample") {echo 'selected';} ?> > Sample </option>
-                        <option value="MSDS" <?php if ($data['doc_type']=="MSDS") {echo 'selected';} ?> > MSDS </option>
-                        <option value="MS & ROHS" <?php if ($data['doc_type']=="MS & ROHS") {echo 'selected';} ?> > MS & ROHS </option>
-                        <option value="Manual" <?php if ($data['doc_type']=="Manual") {echo 'selected';} ?> > Manual </option>
-                        <option value="Obsolate" <?php if ($data['doc_type']=="Obsolate") {echo 'selected';} ?> > Obsolate </option>
-                        <option value="SATO" <?php if ($data['doc_type']=="SATO") {echo 'selected';} ?> > SATO </option>
-                        <option value="PE" <?php if ($data['doc_type']=="PE") {echo 'selected';} ?> > PE </option>
-                    </select>
-                    <?php
-                }
-                ?>
+                    <option value="<?php echo $type_esc; ?>" <?php echo $selected; ?>>
+                        <?php echo $type_esc; ?>
+                    </option>
+                    <?php 
+                        endforeach; 
+                    }
+                    ?>
+                </select>
             </td>
         </tr>
-
         <tr>
             <td>Section</td>
             <td>:</td>
             <td>
                 <?php 
-            $sect="select * from section order by id_section";
-            $sql_sect=mysqli_query($link, $sect);
-        ?>
-             <select id="section" name="section" class="form-control" >
-                            <option value="-"> --- Select Section --- </option>
-                            <?php while($data_sec = mysqli_fetch_array( $sql_sect )) 
-                            { ?>
-                            <option value="<?php echo htmlspecialchars($data_sec['id_section']); ?>" <?php if ($data['section']==$data_sec['id_section']) {echo 'selected';} ?>> <?php echo htmlspecialchars($data_sec['sect_name']); ?> </option>
-                            <?php } ?>
-                            </option>
-                        </select>
+                $sect="SELECT * FROM section ORDER BY id_section";
+                $sql_sect=mysqli_query($link, $sect);
+                ?>
+                <select name="section" class="form-control">
+                    <option value="-">--- Select ---</option>
+                    <?php while($data_sec = mysqli_fetch_array($sql_sect)): ?>
+                    <option value="<?php echo htmlspecialchars($data_sec['id_section']); ?>" 
+                            <?php if ($data['section']==$data_sec['id_section']) echo 'selected'; ?>>
+                        <?php echo htmlspecialchars($data_sec['sect_name']); ?>
+                    </option>
+                    <?php endwhile; ?>
+                </select>
             </td>
         </tr>
-
         <tr>
             <td>Device</td>
             <td>:</td>
             <td>
                 <?php 
-            $dev="select * from device where status='Aktif' order by group_dev";
-            $sql_dev=mysqli_query($link, $dev);
-        ?>
-             <select id="device" name="device" class="form-control" >
-                            <option value="-"> --- Select Device --- </option>
-                            <?php while($data_dev = mysqli_fetch_array( $sql_dev )) 
-                            { ?>
-                            <option value="<?php echo htmlspecialchars($data_dev['name']); ?>" <?php if ($data['device']==$data_dev['name']) {echo 'selected';} ?> > <?php echo htmlspecialchars($data_dev['name']); ?> </option>
-                            <?php } ?>
-                            </option>
-                        </select>
+                $dev="SELECT * FROM device WHERE status='Aktif' ORDER BY group_dev";
+                $sql_dev=mysqli_query($link, $dev);
+                ?>
+                <select name="device" class="form-control">
+                    <option value="-">--- Select ---</option>
+                    <?php while($data_dev = mysqli_fetch_array($sql_dev)): ?>
+                    <option value="<?php echo htmlspecialchars($data_dev['name']); ?>" 
+                            <?php if ($data['device']==$data_dev['name']) echo 'selected'; ?>>
+                        <?php echo htmlspecialchars($data_dev['name']); ?>
+                    </option>
+                    <?php endwhile; ?>
+                </select>
             </td>
         </tr>
-
         <tr>
             <td>Process</td>
             <td>:</td>
             <td>
                 <?php 
-            $sect="select * from process order by  proc_name";
-            $sql_sect=mysqli_query($link, $sect);
-        ?>
-             <select id="process" name="process" class="form-control">
-                            <option value="-"> --- Select Process --- </option>
-                            <?php while($data_sec = mysqli_fetch_array( $sql_sect )) 
-                            { ?>
-                            <option value="<?php echo htmlspecialchars($data_sec['proc_name']); ?>" <?php if ($data['process']==$data_sec['proc_name']) {echo 'selected';} ?> > <?php echo htmlspecialchars($data_sec['proc_name']); ?> </option>
-                            <?php } ?>
-                            </option>
-                        </select>
+                $proc="SELECT * FROM process ORDER BY proc_name";
+                $sql_proc=mysqli_query($link, $proc);
+                ?>
+                <select name="process" class="form-control">
+                    <option value="-">--- Select ---</option>
+                    <?php while($data_proc = mysqli_fetch_array($sql_proc)): ?>
+                    <option value="<?php echo htmlspecialchars($data_proc['proc_name']); ?>" 
+                            <?php if ($data['process']==$data_proc['proc_name']) echo 'selected'; ?>>
+                        <?php echo htmlspecialchars($data_proc['proc_name']); ?>
+                    </option>
+                    <?php endwhile; ?>
+                </select>
             </td>
         </tr>
-
         <tr>
             <td>Doc. Title</td>
             <td>:</td>
             <td><input type="text" class="form-control" name="title" value="<?php echo htmlspecialchars($data['title']); ?>"></td>
         </tr>
-
         <tr>
             <td>Doc. Description</td>
             <td>:</td>
-            <td >
-            <textarea  class="form-control" name="desc" cols="40" rows="10" wrap="physical" ><?php echo htmlspecialchars($data['descript']); ?></textarea>
-            </td>
-        </tr>
-
-        <tr>
-            <td>Requirement Document</td>
-            <td>:</td>
-            <td >
-              <table>
-             <tr><input type="radio" aria-label="ISO 9001" name="iso" value="1" <?php if (isset($data['iso']) && $data['iso']==1){echo "checked";}?> >&nbsp; ISO 9001 <br /></tr>
-                <tr><input type="radio" aria-label="ISO 14001" name="iso" value="2" <?php if (isset($data['iso']) && $data['iso']==2){echo "checked";}?> >&nbsp; ISO 14001 <br /></tr>
-                <tr><input type="radio" aria-label="OHSAS" name="iso" value="3" <?php if (isset($data['iso']) && $data['iso']==3){echo "checked";}?>  >&nbsp; OHSAS <br /></tr>
-                <tr><input type="radio" aria-label="None" name="iso" value="0" <?php if (!isset($data['iso']) || $data['iso']==0 || empty($data['iso'])){echo "checked";}?>  >&nbsp; None <br /></tr>
-              </table>
-            </td>
+            <td><textarea class="form-control" name="desc" rows="5"><?php echo htmlspecialchars($data['descript']); ?></textarea></td>
         </tr>
         <tr>
-            <td>Related/Addopted Document</td>
+            <td>Requirement</td>
             <td>:</td>
             <td>
-            <input type="text" class="form-control" name="rel[]" placeholder="Related Doc 1">
-            <input type="text" class="form-control" name="rel[]" placeholder="Related Doc 2">
-            <input type="text" class="form-control" name="rel[]" placeholder="Related Doc 3">
-            <input type="text" class="form-control" name="rel[]" placeholder="Related Doc 4">
-            <input type="text" class="form-control" name="rel[]" placeholder="Related Doc 5">
+                <input type="radio" name="iso" value="1" <?php if (isset($data['iso']) && $data['iso']==1) echo "checked"; ?>> ISO 9001<br/>
+                <input type="radio" name="iso" value="2" <?php if (isset($data['iso']) && $data['iso']==2) echo "checked"; ?>> ISO 14001<br/>
+                <input type="radio" name="iso" value="3" <?php if (isset($data['iso']) && $data['iso']==3) echo "checked"; ?>> OHSAS<br/>
+                <input type="radio" name="iso" value="0" <?php if (!isset($data['iso']) || $data['iso']==0) echo "checked"; ?>> None
             </td>
         </tr>
-
         <tr>
-            <td>Revision reason/history</td>
+            <td>Related Doc</td>
             <td>:</td>
-            <td >
-            <textarea  class="form-control" name="hist" cols="40" rows="10" wrap="physical" ><?php echo htmlspecialchars($data['history']); ?></textarea>
+            <td>
+                <?php for($i=1; $i<=5; $i++): ?>
+                <input type="text" class="form-control" name="rel[]" placeholder="Related Doc <?php echo $i; ?>">
+                <?php endfor; ?>
             </td>
         </tr>
-
+        <tr>
+            <td>Revision History</td>
+            <td>:</td>
+            <td><textarea class="form-control" name="hist" rows="5"><?php echo htmlspecialchars($data['history']); ?></textarea></td>
+        </tr>
         <tr>
             <td></td>
             <td></td>
             <td>
-                <button type="submit" name="submit" value="save" class="btn btn-success">Save Changes</button>
+                <button type="submit" name="submit" value="save" class="btn btn-success">
+                    <span class="glyphicon glyphicon-floppy-disk"></span> Save Changes
+                </button>
+                <a href="my_doc.php?tipe=<?php echo urlencode($data['doc_type']); ?>&submit=Show" class="btn btn-default">
+                    Cancel
+                </a>
             </td>
         </tr>
     </table>
@@ -400,38 +542,50 @@ while($data = mysqli_fetch_array($res))
 </div>
 </div>
 
-<!-- Modal Pilihan Aksi -->
-<div class="modal fade" id="actionModal" tabindex="-1" role="dialog" aria-labelledby="actionModalLabel" aria-hidden="true">
+<div class="modal fade" id="actionModal" tabindex="-1" role="dialog">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
-                <h4 class="modal-title" id="actionModalLabel">Pilih Aksi Selanjutnya</h4>
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Pilih Aksi Selanjutnya</h4>
             </div>
             <div class="modal-body">
-                <p>Edit data berhasil disimpan. Apa yang ingin Anda lakukan selanjutnya?</p>
+                <p><strong>✓ Edit berhasil disimpan!</strong></p>
+                
                 <div class="alert alert-info">
-                    <strong>Status saat ini:</strong> <?php echo htmlspecialchars($data['status']); ?>
+                    <strong>Current Status:</strong>
+                    <ul>
+                        <li>✓ <?php echo $status_data['approved_count']; ?> approved</li>
+                        <li>⚠ <?php echo $status_data['pending_count']; ?> suspended</li>
+                        <li>⏳ <?php echo $status_data['review_count']; ?> pending review</li>
+                    </ul>
                 </div>
+                
                 <div class="alert alert-warning">
-                    <strong>Catatan:</strong> Jika Anda memilih "Selesai", dokumen akan dikembalikan ke status Review dan semua approver akan diberitahu untuk melakukan review ulang.
+                    <strong>Pilihan 1: Change Document</strong>
+                    <p>Upload file baru. Hanya approver yang suspend yang perlu re-review.</p>
+                </div>
+                
+                <div class="alert alert-success">
+                    <strong>Pilihan 2: Selesai</strong>
+                    <p>Kembalikan ke status Review tanpa upload. Approver yang suspend akan otomatis bisa review lagi.</p>
                 </div>
             </div>
             <div class="modal-footer">
                 <form method="GET" action="ganti_doc.php" style="display:inline;">
-                    <input type="hidden" name="drf" value="<?php echo htmlspecialchars($drf); ?>">
-                    <input type="hidden" name="type" id="changeDocType" value="<?php echo htmlspecialchars($data['doc_type']); ?>">
+                    <input type="hidden" name="drf" value="<?php echo $drf; ?>">
+                    <input type="hidden" name="type" value="<?php echo htmlspecialchars($data['doc_type']); ?>">
                     <button type="submit" class="btn btn-warning">
                         <span class="glyphicon glyphicon-upload"></span> Change Document
                     </button>
                 </form>
                 
                 <form method="POST" action="" style="display:inline;">
-                    <input type="hidden" name="drf" value="<?php echo htmlspecialchars($drf); ?>">
+                    <input type="hidden" name="drf" value="<?php echo $drf; ?>">
                     <input type="hidden" name="action" value="finish">
                     <input type="hidden" name="update_status" value="1">
                     <button type="submit" class="btn btn-success">
-                        <span class="glyphicon glyphicon-ok"></span> Selesai (Kembalikan ke Review)
+                        <span class="glyphicon glyphicon-ok"></span> Selesai (Set to Review)
                     </button>
                 </form>
                 
@@ -441,15 +595,11 @@ while($data = mysqli_fetch_array($res))
     </div>
 </div>
 
-<script type="text/javascript">
+<script>
 $(document).ready(function() {
     <?php if (isset($showModal) && $showModal): ?>
     $('#actionModal').modal('show');
     <?php endif; ?>
-    
-    $('#typeSelect').change(function() {
-        $('#changeDocType').val($(this).val());
-    });
 });
 </script>
 
