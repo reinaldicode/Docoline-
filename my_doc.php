@@ -5,10 +5,10 @@ ini_set('display_errors', 0);
 ini_set('log_errors', 1);
 
 // Essential includes with error handling
-$required_files = ['header.php', 'koneksi.php'];
+$required_files = ['header.php', 'koneksi.php', 'document_config.php']; // <-- TAMBAHKAN document_config.php
 foreach ($required_files as $file) {
     if (file_exists($file)) {
-        include $file;
+        include_once $file; // Gunakan include_once untuk menghindari error
     } else {
         die("Error: Required file '$file' not found.");
     }
@@ -16,84 +16,11 @@ foreach ($required_files as $file) {
 
 /**
  * ============================================================================
- * CONFIGURATION & CACHING
+ * HAPUS SEMUA CLASS DocumentConfig DARI SINI (Baris 20-111 di file asli)
+ * Logika tersebut sudah dipindah ke 'document_config.php'
  * ============================================================================
  */
-class DocumentConfig {
-    private static $docTypes = null;
-    private static $cacheFile = null;
-    
-    public static function getDocumentTypes() {
-        if (self::$docTypes !== null) {
-            return self::$docTypes;
-        }
-        
-        self::$cacheFile = __DIR__ . '/cache/doc_types.cache';
-        
-        // Check cache first (valid for 1 hour)
-        if (file_exists(self::$cacheFile) && (time() - filemtime(self::$cacheFile) < 3600)) {
-            $cached = @file_get_contents(self::$cacheFile);
-            if ($cached) {
-                self::$docTypes = json_decode($cached, true);
-                if (is_array(self::$docTypes) && !empty(self::$docTypes)) {
-                    return self::$docTypes;
-                }
-            }
-        }
-        
-        // Load from JSON
-        $jsonFile = __DIR__ . '/data/document_types.json';
-        $docTypes = [];
-        
-        if (file_exists($jsonFile)) {
-            $content = @file_get_contents($jsonFile);
-            if ($content) {
-                $data = json_decode($content, true);
-                if (is_array($data)) {
-                    $docTypes = self::flattenDocTypes($data);
-                }
-            }
-        }
-        
-        // Fallback to defaults
-        if (empty($docTypes)) {
-            $docTypes = ['WI', 'Procedure', 'Form', 'Monitor Sample', 'MSDS', 'Material Spec', 'ROHS'];
-        }
-        
-        self::$docTypes = array_values(array_unique($docTypes));
-        
-        // Save to cache
-        self::saveCache();
-        
-        return self::$docTypes;
-    }
-    
-    private static function flattenDocTypes($data) {
-        $result = [];
-        
-        foreach ($data as $item) {
-            if (is_string($item)) {
-                $result[] = $item;
-            } elseif (is_array($item)) {
-                if (isset($item['name'])) {
-                    $result[] = $item['name'];
-                } else {
-                    $result = array_merge($result, self::flattenDocTypes($item));
-                }
-            }
-        }
-        
-        return $result;
-    }
-    
-    private static function saveCache() {
-        $cacheDir = dirname(self::$cacheFile);
-        if (!is_dir($cacheDir)) {
-            @mkdir($cacheDir, 0755, true);
-        }
-        @file_put_contents(self::$cacheFile, json_encode(self::$docTypes));
-    }
-}
+
 
 /**
  * ============================================================================
@@ -120,6 +47,11 @@ class DocumentQuery {
             'my_documents' => 0,
             'to_review' => 0
         ];
+        
+        // Pastikan $docTypes adalah array
+        if (!is_array($docTypes)) {
+             $docTypes = [];
+        }
         
         foreach($docTypes as $type) {
             $counts[$type] = 0;
@@ -539,9 +471,9 @@ function renderTableRow($info, $nrp, $state, $tipe, $section_type, $index) {
 function renderDocumentTable($result, $nrp, $state, $tipe, $section_type = '') {
     if (!$result || mysqli_num_rows($result) == 0) {
         echo '<div class="empty-state">
-                <span class="glyphicon glyphicon-folder-open" style="font-size: 48px; color: #ccc;"></span>
-                <h4>No Documents Found</h4>
-                <p>No documents match your criteria.</p>
+                  <span class="glyphicon glyphicon-folder-open" style="font-size: 48px; color: #ccc;"></span>
+                  <h4>No Documents Found</h4>
+                  <p>No documents match your criteria.</p>
               </div>';
         return;
     }
@@ -589,7 +521,8 @@ $status = $_GET['status'] ?? '';
 $submit = $_GET['submit'] ?? '';
 
 // Initialize
-$docTypes = DocumentConfig::getDocumentTypes();
+// GANTI ini untuk menggunakan fungsi yang benar
+$docTypes = DocumentConfig::getFlattenedDocumentTypes(); 
 $docQuery = new DocumentQuery($link, $nrp, $state);
 
 // Get notification counts
@@ -607,6 +540,7 @@ if($notifCounts['total'] > 0 && empty($submit)) {
 ?>
 
 <style>
+/* ... CSS Anda tidak berubah ... */
 .bg-info { background-color: #d9edf7; }
 .danger { background-color: #f8d7da; }
 .warning { background-color: #fff3cd; }
@@ -723,10 +657,12 @@ if($notifCounts['total'] > 0 && empty($submit)) {
 
     <?php 
     $hasTypes = false;
-    foreach($docTypes as $type) {
-        if($notifCounts[$type] > 0) {
-            $hasTypes = true;
-            break;
+    if (is_array($docTypes)) { // Tambah Pengecekan
+        foreach($docTypes as $type) {
+            if(isset($notifCounts[$type]) && $notifCounts[$type] > 0) { // Tambah Pengecekan
+                $hasTypes = true;
+                break;
+            }
         }
     }
     
@@ -734,7 +670,7 @@ if($notifCounts['total'] > 0 && empty($submit)) {
     <div style="font-size: 11px; opacity: 0.85; margin-bottom: 8px; text-transform: uppercase;">Filter by Type</div>
     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
         <?php foreach($docTypes as $type): ?>
-            <?php if($notifCounts[$type] > 0): ?>
+            <?php if(isset($notifCounts[$type]) && $notifCounts[$type] > 0): // Tambah Pengecekan ?>
             <a href="?tipe=<?php echo urlencode($type); ?>&submit=Show<?php echo ($state == 'Admin' && !empty($status)) ? '&status='.urlencode($status) : ''; ?>" 
                style="background: rgba(255,255,255,0.25); padding: 6px 12px; border-radius: 4px; font-size: 13px; text-decoration: none; color: white; display: inline-flex; align-items: center; gap: 6px;">
                 <span><?php echo escapeHtml($type); ?></span>
@@ -782,11 +718,20 @@ if($notifCounts['total'] > 0 && empty($submit)) {
     <div class="form-group">
         <select name="tipe" class="form-control">
             <option value="-">--- Select Type ---</option>
-            <?php foreach($docTypes as $type): ?>
-            <option value="<?php echo escapeHtml($type); ?>" <?php echo ($tipe == $type) ? 'selected' : ''; ?>>
-                <?php echo escapeHtml($type); ?> <?php echo ($notifCounts[$type] > 0) ? '(' . $notifCounts[$type] . ' new)' : ''; ?>
+            <?php 
+            // Loop ini sekarang dijamin dinamis karena $docTypes dari DocumentConfig
+            if (is_array($docTypes)) { // Tambah Pengecekan
+                foreach($docTypes as $type): 
+                    $type_esc = escapeHtml($type);
+                    $count_label = (isset($notifCounts[$type]) && $notifCounts[$type] > 0) ? ' (' . $notifCounts[$type] . ' new)' : '';
+            ?>
+            <option value="<?php echo $type_esc; ?>" <?php echo ($tipe == $type) ? 'selected' : ''; ?>>
+                <?php echo $type_esc . $count_label; ?>
             </option>
-            <?php endforeach; ?>
+            <?php 
+                endforeach; 
+            }
+            ?>
         </select>
         
         <?php if ($state == 'Admin'): ?>
@@ -816,9 +761,9 @@ if(!empty($submit)) {
                 mysqli_free_result($result);
             } else {
                 echo '<div class="empty-state">
-                        <span class="glyphicon glyphicon-folder-open" style="font-size: 48px; color: #ccc;"></span>
-                        <h4>No Documents Found</h4>
-                        <p>No documents match your criteria.</p>
+                          <span class="glyphicon glyphicon-folder-open" style="font-size: 48px; color: #ccc;"></span>
+                          <h4>No Documents Found</h4>
+                          <p>No documents match your criteria.</p>
                       </div>';
             }
         }
@@ -826,13 +771,13 @@ if(!empty($submit)) {
             $results = $docQuery->getDocuments($tipe, '');
             
             if($results && is_array($results)) {
-                $count_review = mysqli_num_rows($results['to_review']);
-                $count_my = mysqli_num_rows($results['my_documents']);
+                $count_review = $results['to_review'] ? mysqli_num_rows($results['to_review']) : 0;
+                $count_my = $results['my_documents'] ? mysqli_num_rows($results['my_documents']) : 0;
                 
                 // Documents to Review Section
                 echo '<div class="section-header">
-                        <h3><span class="glyphicon glyphicon-check"></span> Documents to Review</h3>
-                        <span class="section-badge">' . $count_review . '</span>
+                          <h3><span class="glyphicon glyphicon-check"></span> Documents to Review</h3>
+                          <span class="section-badge">' . $count_review . '</span>
                       </div>';
                 
                 if($count_review > 0) {
@@ -840,16 +785,16 @@ if(!empty($submit)) {
                     mysqli_free_result($results['to_review']);
                 } else {
                     echo '<div class="empty-state">
-                            <span class="glyphicon glyphicon-ok-circle" style="font-size: 48px; color: #5cb85c;"></span>
-                            <h4>All Clear!</h4>
-                            <p>No documents waiting for your review.</p>
+                              <span class="glyphicon glyphicon-ok-circle" style="font-size: 48px; color: #5cb85c;"></span>
+                              <h4>All Clear!</h4>
+                              <p>No documents waiting for your review.</p>
                           </div>';
                 }
                 
                 // My Documents Section
                 echo '<div class="section-header my-docs">
-                        <h3><span class="glyphicon glyphicon-folder-open"></span> My Documents</h3>
-                        <span class="section-badge">' . $count_my . '</span>
+                          <h3><span class="glyphicon glyphicon-folder-open"></span> My Documents</h3>
+                          <span class="section-badge">' . $count_my . '</span>
                       </div>';
                 
                 if($count_my > 0) {
@@ -857,9 +802,9 @@ if(!empty($submit)) {
                     mysqli_free_result($results['my_documents']);
                 } else {
                     echo '<div class="empty-state">
-                            <span class="glyphicon glyphicon-folder-open" style="font-size: 48px; color: #ccc;"></span>
-                            <h4>No Documents</h4>
-                            <p>You haven\'t created any documents yet.</p>
+                              <span class="glyphicon glyphicon-folder-open" style="font-size: 48px; color: #ccc;"></span>
+                              <h4>No Documents</h4>
+                              <p>You haven\'t created any documents yet.</p>
                           </div>';
                 }
             }
@@ -867,7 +812,7 @@ if(!empty($submit)) {
     } catch (Exception $e) {
         error_log("Error displaying documents: " . $e->getMessage());
         echo '<div class="alert alert-danger">
-                <strong>Error:</strong> Unable to load documents. Please try again later.
+                  <strong>Error:</strong> Unable to load documents. Please try again later.
               </div>';
     }
 }
@@ -926,7 +871,6 @@ $(document).ready(function() {
 });
 </script>
 
-<!-- Modal: Change Document -->
 <div class="modal fade" id="myModal" tabindex="-1" role="dialog" aria-labelledby="uploadModalLabel">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -967,7 +911,6 @@ $(document).ready(function() {
     </div>
 </div>
 
-<!-- Modal: Secure Document -->
 <div class="modal fade" id="myModal2" tabindex="-1" role="dialog" aria-labelledby="secureModalLabel">
     <div class="modal-dialog">
         <div class="modal-content">
