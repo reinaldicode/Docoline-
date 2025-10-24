@@ -1,14 +1,11 @@
 <?php
-// Ganti urutan include
 include('header.php');
 include('koneksi.php');
-include_once('document_config.php'); // <-- TAMBAHKAN INI
+include_once('document_config.php');
 
-// Enable error reporting untuk debugging
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-// ========== Definisikan $drf dengan benar ==========
 $drf = 0;
 if (isset($_GET['drf']) && is_numeric($_GET['drf'])) {
     $drf = (int)$_GET['drf'];
@@ -20,14 +17,10 @@ if ($drf == 0) {
     die("Error: No valid DRF specified");
 }
 
-// ========== LOAD DOCUMENT TYPES DARI CLASS TERPUSAT ==========
-// HAPUS loader JSON manual dari sini
-$docTypes = DocumentConfig::getFlattenedDocumentTypes(); // <-- PANGGIL CLASS
-
+$docTypes = DocumentConfig::getFlattenedDocumentTypes();
 
 // ============================================================================
 // HANDLE UPDATE STATUS TO REVIEW (Tombol "Selesai")
-// ... (Logika ini tidak berubah, saya persingkat untuk kejelasan)
 // ============================================================================
 if (isset($_POST['update_status']) && $_POST['update_status'] == '1' && isset($_POST['action']) && $_POST['action'] == 'finish') {
     
@@ -45,12 +38,13 @@ if (isset($_POST['update_status']) && $_POST['update_status'] == '1' && isset($_
     $check_before = "SELECT id, nrp, status, tgl_approve, reason FROM rev_doc WHERE id_doc=$drf_update";
     $res_before = mysqli_query($link, $check_before);
     
-    $debug_info = "\n\n";
+    $debug_info = "<!-- DEBUG BEFORE UPDATE:\n";
     if ($res_before) {
         while ($row = mysqli_fetch_assoc($res_before)) {
-            $debug_info .= "\n";
+            $debug_info .= "ID: {$row['id']}, NRP: {$row['nrp']}, Status: {$row['status']}, Date: {$row['tgl_approve']}\n";
         }
     }
+    $debug_info .= "-->\n";
     echo $debug_info;
     
     // ========== STEP 2: Update status dokumen ke Review ==========
@@ -69,12 +63,12 @@ if (isset($_POST['update_status']) && $_POST['update_status'] == '1' && isset($_
                         WHERE id_doc=$drf_update 
                         AND status='Pending'";
     
-    echo "\n";
+    echo "<!-- RESET QUERY: " . $reset_approvers . " -->\n";
     
     $result_reset = mysqli_query($link, $reset_approvers);
     
     if (!$result_reset) {
-        echo "\n";
+        echo "<!-- Bulk update gagal, coba per-record -->\n";
         
         $get_pending = "SELECT id FROM rev_doc WHERE id_doc=$drf_update AND status='Pending'";
         $res_pending_ids = mysqli_query($link, $get_pending);
@@ -91,10 +85,10 @@ if (isset($_POST['update_status']) && $_POST['update_status'] == '1' && isset($_
                 
                 if (mysqli_query($link, $update_single)) {
                     $success_count++;
-                    echo "\n";
+                    echo "<!-- Updated record ID: $id -->\n";
                 } else {
                     $error_count++;
-                    echo "\n";
+                    echo "<!-- Failed to update record ID: $id - " . mysqli_error($link) . " -->\n";
                 }
             }
         }
@@ -108,18 +102,19 @@ if (isset($_POST['update_status']) && $_POST['update_status'] == '1' && isset($_
         $affected_rows = mysqli_affected_rows($link);
     }
     
-    echo "\n";
+    echo "<!-- Affected rows: $affected_rows -->\n";
     
     // ========== STEP 4: CEK HASIL UPDATE ==========
     $check_after = "SELECT id, nrp, status, tgl_approve, reason FROM rev_doc WHERE id_doc=$drf_update";
     $res_after = mysqli_query($link, $check_after);
     
-    $debug_after = "\n\n";
+    $debug_after = "<!-- DEBUG AFTER UPDATE:\n";
     if ($res_after) {
         while ($row = mysqli_fetch_assoc($res_after)) {
-            $debug_after .= "\n";
+            $debug_after .= "ID: {$row['id']}, NRP: {$row['nrp']}, Status: {$row['status']}, Date: {$row['tgl_approve']}\n";
         }
     }
+    $debug_after .= "-->\n";
     echo $debug_after;
     
     // ========== STEP 5: Get document info ==========
@@ -234,7 +229,7 @@ if (isset($_POST['submit']) && $_POST['submit'] == 'save') {
     $norev = mysqli_real_escape_string($link, $_POST['norev']);
     $revto = mysqli_real_escape_string($link, $_POST['revto']);
     $cat = mysqli_real_escape_string($link, $_POST['cat']);
-    $type = mysqli_real_escape_string($link, $_POST['type']); // <-- Ini sekarang dinamis
+    $type = mysqli_real_escape_string($link, $_POST['type']);
     $section = mysqli_real_escape_string($link, $_POST['section']);
     $device = mysqli_real_escape_string($link, $_POST['device']);
     $process = mysqli_real_escape_string($link, $_POST['process']);
@@ -416,11 +411,9 @@ while($data = mysqli_fetch_array($res))
                 <select name="type" class="form-control">
                     <option value="-">--- Select ---</option>
                     <?php 
-                    // Gunakan $docTypes yang sudah di-load dari DocumentConfig
-                    if (is_array($docTypes)) { // Pengecekan
+                    if (is_array($docTypes)) {
                         foreach ($docTypes as $type): 
                             $type_esc = htmlspecialchars($type);
-                            // Set 'selected' jika tipenya sama dengan data dokumen
                             $selected = ($data['doc_type'] == $type) ? 'selected' : '';
                     ?>
                     <option value="<?php echo $type_esc; ?>" <?php echo $selected; ?>>
@@ -514,8 +507,21 @@ while($data = mysqli_fetch_array($res))
             <td>Related Doc</td>
             <td>:</td>
             <td>
-                <?php for($i=1; $i<=5; $i++): ?>
-                <input type="text" class="form-control" name="rel[]" placeholder="Related Doc <?php echo $i; ?>">
+                <?php 
+                // Get existing related documents
+                $sql_rel = "SELECT no_doc FROM rel_doc WHERE no_drf=$drf";
+                $res_rel = mysqli_query($link, $sql_rel);
+                $existing_rel = array();
+                if ($res_rel) {
+                    while($row_rel = mysqli_fetch_array($res_rel)) {
+                        $existing_rel[] = $row_rel['no_doc'];
+                    }
+                }
+                
+                for($i=0; $i<5; $i++): 
+                    $value = isset($existing_rel[$i]) ? htmlspecialchars($existing_rel[$i]) : '';
+                ?>
+                <input type="text" class="form-control" name="rel[]" value="<?php echo $value; ?>" placeholder="Related Doc <?php echo $i+1; ?>">
                 <?php endfor; ?>
             </td>
         </tr>
@@ -603,9 +609,7 @@ $(document).ready(function() {
 });
 </script>
 
-
-<!-- anjay -->
-
 <?php 
 }
+include('footer.php');
 ?>

@@ -85,7 +85,15 @@
         "dynamic": true,
         "options_by_doctype": {
             "Obsolate": ["WI", "Procedure", "Form"],
-            "MS & ROHS": ["Material Spec", "ROHS"]
+            "MS & ROHS": ["Material Spec.", "ROHS"]
         }
+    },
+    "language": {
+        "label": "Language",
+        "description": "Document language",
+        "options": [
+            "Indonesian",
+            "English"
+        ]
     }
 }

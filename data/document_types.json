@@ -11,7 +11,8 @@
             "process": false,
             "status": true,
             "category": false,
-            "type": false
+            "type": false,
+            "language": false
         }
     },
     {
@@ -29,7 +30,8 @@
                     "category": true,
                     "device": true,
                     "process": true,
-                    "type": false
+                    "type": false,
+                    "language": false
                 },
                 "_note": "Shows documents with device != '-' (production devices)"
             },
@@ -43,7 +45,8 @@
                     "category": true,
                     "device": false,
                     "process": false,
-                    "type": false
+                    "type": false,
+                    "language": false
                 },
                 "_note": "Shows documents with device = '-' or empty (non-production)"
             }
@@ -55,7 +58,8 @@
             "category": true,
             "device": false,
             "process": false,
-            "type": false
+            "type": false,
+            "language": false
         },
         "use_custom_file": false,
         "custom_file": ""
@@ -75,7 +79,8 @@
                     "category": true,
                     "device": true,
                     "process": true,
-                    "type": false
+                    "type": false,
+                    "language": false
                 },
                 "_note": "Shows documents with device != '-' (production devices)"
             },
@@ -89,7 +94,8 @@
                     "category": true,
                     "device": false,
                     "process": false,
-                    "type": false
+                    "type": false,
+                    "language": false
                 },
                 "_note": "Shows documents with device = '-' or empty (non-production)"
             }
@@ -101,7 +107,8 @@
             "process": false,
             "status": true,
             "category": false,
-            "type": false
+            "type": false,
+            "language": false
         }
     },
     {
@@ -116,7 +123,8 @@
             "category": true,
             "device": false,
             "process": false,
-            "type": true
+            "type": true,
+            "language": false
         },
         "use_custom_file": false,
         "custom_file": ""
@@ -133,7 +141,8 @@
             "category": true,
             "device": true,
             "process": true,
-            "type": false
+            "type": false,
+            "language": false
         },
         "use_custom_file": false,
         "custom_file": ""
@@ -150,7 +159,8 @@
             "category": true,
             "device": true,
             "process": true,
-            "type": false
+            "type": false,
+            "language": false
         },
         "use_custom_file": false,
         "custom_file": ""
@@ -163,11 +173,12 @@
         "filter_config": {
             "section_dept": false,
             "section_prod": false,
-            "status": false,
-            "category": false,
             "device": false,
             "process": false,
-            "type": false
+            "status": false,
+            "category": false,
+            "type": false,
+            "language": true
         },
         "use_custom_file": false,
         "custom_file": ""
@@ -184,25 +195,11 @@
             "category": true,
             "device": false,
             "process": false,
-            "type": true
+            "type": true,
+            "language": false
         },
         "use_custom_file": false,
         "custom_file": ""
-    },
-    {
-        "id": "per",
-        "name": "PER",
-        "has_submenu": false,
-        "submenu": [],
-        "filter_config": {
-            "section_dept": false,
-            "section_prod": false,
-            "status": false,
-            "category": false,
-            "device": false,
-            "process": false,
-            "type": false
-        }
     },
     {
         "id": "sato",
@@ -219,7 +216,8 @@
                     "category": false,
                     "device": true,
                     "process": true,
-                    "type": false
+                    "type": false,
+                    "language": false
                 }
             },
             {
@@ -232,18 +230,20 @@
                     "category": true,
                     "device": false,
                     "process": false,
-                    "type": false
+                    "type": false,
+                    "language": false
                 }
             }
         ],
         "filter_config": {
-            "section_dept": true,
+            "section_dept": false,
             "section_prod": true,
             "status": true,
             "category": true,
             "device": true,
             "process": true,
-            "type": false
+            "type": false,
+            "language": false
         },
         "use_custom_file": false,
         "custom_file": ""
@@ -260,7 +260,8 @@
             "category": true,
             "device": false,
             "process": false,
-            "type": false
+            "type": false,
+            "language": false
         },
         "use_custom_file": false,
         "custom_file": ""

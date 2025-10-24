@@ -75,31 +75,67 @@ $(document).ready(function () {
 <br />
 
   <?php 
-  // Logika untuk menghitung notifikasi - TELAH DIPERBAIKI
+  // ✅ LOGIKA NOTIFIKASI YANG TELAH DISINKRONKAN DENGAN my_doc.php
   $sql="";
   $rows = 0;
+  
   if (isset($state)) {
-    if ($state=='Admin')
-    {
-      // Admin: hitung dokumen Review + Pending (BUKAN Approved)
-      $sql="SELECT * FROM docu WHERE status IN ('Review', 'Pending') ORDER BY no_drf";
-    }
-    elseif ($state=='Originator')
-    {
-      // Originator: hitung dokumen miliknya yang Review + Pending
-      $sql="SELECT * FROM docu WHERE status IN ('Review', 'Pending') AND user_id='$nrp' ORDER BY no_drf";
-    }
-    elseif ($state=='Approver')
-    {
-      // Approver: hitung dokumen yang perlu di-approve (hanya Review)
-      $sql="SELECT * FROM docu,rev_doc WHERE docu.status='Review' AND rev_doc.status='Review' AND docu.no_drf=rev_doc.id_doc AND rev_doc.nrp='$nrp' ORDER BY no_drf";
-    }
-
-    if (!empty($sql)) {
+    if ($state=='Admin') {
+      // ✅ Admin: hitung dokumen Review + Pending + Edited (SUDAH SINKRON)
+      $sql="SELECT * FROM docu WHERE status IN ('Review', 'Pending', 'Edited') ORDER BY no_drf";
+      
+      if (!empty($sql)) {
         $res=mysqli_query($link, $sql);
         if ($res) {
-            $rows = mysqli_num_rows($res);
+          $rows = mysqli_num_rows($res);
         }
+      }
+    }
+    elseif ($state=='Originator') {
+      // ✅ Originator: hitung dokumen miliknya yang Review + Pending + Edited (SUDAH SINKRON)
+      $sql="SELECT * FROM docu WHERE status IN ('Review', 'Pending', 'Edited') AND user_id='$nrp' ORDER BY no_drf";
+      
+      if (!empty($sql)) {
+        $res=mysqli_query($link, $sql);
+        if ($res) {
+          $rows = mysqli_num_rows($res);
+        }
+      }
+    }
+    elseif ($state=='Approver') {
+      // ✅ Approver: hitung dokumen yang perlu di-approve + dokumen milik sendiri (SUDAH SINKRON)
+      // Logic sama persis dengan function getNotificationCounts() di my_doc.php
+      
+      // 1. Hitung dokumen yang perlu di-review
+      $sql_review = "SELECT COUNT(DISTINCT docu.no_drf) as count 
+                     FROM docu
+                     INNER JOIN rev_doc ON docu.no_drf=rev_doc.id_doc
+                     WHERE docu.status='Review' 
+                     AND rev_doc.status='Review' 
+                     AND rev_doc.nrp='$nrp'";
+      
+      $result_review = mysqli_query($link, $sql_review);
+      $count_review = 0;
+      if ($result_review) {
+        $row_review = mysqli_fetch_assoc($result_review);
+        $count_review = (int)$row_review['count'];
+      }
+      
+      // 2. Hitung dokumen milik sendiri
+      $sql_my = "SELECT COUNT(*) as count 
+                 FROM docu 
+                 WHERE user_id='$nrp' 
+                 AND status IN ('Review', 'Pending', 'Edited')";
+      
+      $result_my = mysqli_query($link, $sql_my);
+      $count_my = 0;
+      if ($result_my) {
+        $row_my = mysqli_fetch_assoc($result_my);
+        $count_my = (int)$row_my['count'];
+      }
+      
+      // 3. Total notifikasi = dokumen to review + dokumen milik sendiri
+      $rows = $count_review + $count_my;
     }
   }
   ?>
